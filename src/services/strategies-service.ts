@@ -3,6 +3,7 @@
 /**
  * @fileOverview Service functions for fetching and managing trading strategies.
  * Replace mock implementations with actual data fetching logic (e.g., from a database or configuration files).
+ * Backend Tech Stack: While not explicitly defined by the frontend code alone, a typical backend for this Next.js app could use Node.js (potentially with Express or Fastify), Python (with Flask/Django/FastAPI), or Go. The database could be PostgreSQL, MongoDB, or Firebase Firestore. The choice depends on specific requirements like performance, scalability, and team familiarity. The interaction with Lumibot suggests a Python backend might be involved for running strategies.
  */
 import { SuggestStrategyConfigInput, SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config'; // Ensure flow types are imported
 import { suggestStrategyConfig as suggestStrategyConfigFlow } from '@/ai/flows/suggest-strategy-config'; // Import the actual flow function
@@ -14,16 +15,18 @@ export interface Strategy {
   status: 'Active' | 'Inactive' | 'Debugging' | 'Backtesting';
   pnl: number; // Consider fetching PnL dynamically or storing recent PnL
   winRate: number; // Similarly, fetch/calculate win rate
-  // Add other relevant fields: parameters, associated agent ID, creation date, etc.
+  // Add other relevant fields: parameters, associated agent ID, creation date, source (AI-gen/Uploaded), filename etc.
+  source?: 'AI-Generated' | 'Uploaded';
+  fileName?: string; // Store original filename if uploaded
 }
 
 // Mock data - replace with actual data source
 // Use `let` to allow modification by add/update/delete functions
 let mockStrategies: Strategy[] = [
-  { id: 'strat-001', name: 'Momentum Burst', description: 'Captures short-term price surges.', status: 'Active', pnl: 1250.75, winRate: 65.2 },
-  { id: 'strat-002', name: 'Mean Reversion Scalper', description: 'Trades price deviations from the mean.', status: 'Inactive', pnl: -340.10, winRate: 48.9 },
-  { id: 'strat-003', name: 'AI Trend Follower', description: 'Uses ML to identify and follow trends.', status: 'Active', pnl: 3105.00, winRate: 72.1 },
-  { id: 'strat-004', name: 'Arbitrage Finder', description: 'Exploits price differences across exchanges.', status: 'Debugging', pnl: 0, winRate: 0 },
+  { id: 'strat-001', name: 'Momentum Burst', description: 'Captures short-term price surges.', status: 'Active', pnl: 1250.75, winRate: 65.2, source: 'Uploaded', fileName: 'momentum_burst_v1.py' },
+  { id: 'strat-002', name: 'Mean Reversion Scalper', description: 'Trades price deviations from the mean.', status: 'Inactive', pnl: -340.10, winRate: 48.9, source: 'Uploaded', fileName: 'mr_scalper_final.py' },
+  { id: 'strat-003', name: 'AI Trend Follower', description: 'Uses ML to identify and follow trends.', status: 'Active', pnl: 3105.00, winRate: 72.1, source: 'AI-Generated' },
+  { id: 'strat-004', name: 'Arbitrage Finder', description: 'Exploits price differences across exchanges.', status: 'Debugging', pnl: 0, winRate: 0, source: 'Uploaded', fileName: 'arb_bot_exp.py' },
 ];
 
 // Simulate potential API/DB errors
@@ -63,7 +66,7 @@ export async function getStrategyById(strategyId: string): Promise<Strategy | nu
 }
 
 /**
- * Adds a new strategy.
+ * Adds a new strategy (typically AI-generated or manually defined without file).
  * TODO: Replace with actual data persistence logic.
  * @param newStrategyData Data for the new strategy (excluding ID, which should be generated).
  * @returns A promise that resolves to the newly created Strategy object.
@@ -79,9 +82,50 @@ export async function addStrategy(newStrategyData: Omit<Strategy, 'id' | 'pnl' |
         pnl: 0, // Initialize PnL
         winRate: 0, // Initialize win rate
         status: newStrategyData.status || 'Inactive', // Default status
+        source: newStrategyData.source || 'AI-Generated', // Default source if not provided
     };
     mockStrategies.push(newStrategy);
     console.log("Added new strategy:", newStrategy.id, newStrategy.name);
+    return newStrategy;
+}
+
+/**
+ * Adds a new strategy from an uploaded file (mock implementation).
+ * TODO: Requires backend implementation for file storage, validation (Lumibot compatibility), and processing.
+ * @param newStrategyData Data including name, description, and original filename.
+ * @returns A promise that resolves to the newly created Strategy object.
+ */
+export async function addStrategyWithFile(newStrategyData: {
+    name: string;
+    description: string;
+    fileName: string;
+    // status?: 'Active' | 'Inactive' | 'Debugging' | 'Backtesting'; // Optional status override
+    // fileContent?: string; // Could be sent if backend processes content directly
+}): Promise<Strategy> {
+    console.log("Adding new strategy from file:", newStrategyData.fileName);
+    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 300)); // Simulate processing/DB save
+    simulateError(0.1); // Simulate potential upload/save error
+
+    // --- Backend actions needed here: ---
+    // 1. Receive the file (e.g., via FormData).
+    // 2. Validate the file (is it a .py? does it seem like Lumibot code? size check?).
+    // 3. Store the file securely (e.g., S3, GCS, local disk).
+    // 4. Save strategy metadata (name, description, file path/ID, status) to the database.
+    // -------------------------------------
+
+    const newId = `strat-up-${String(Date.now()).slice(-3)}${Math.floor(Math.random() * 90 + 10)}`;
+    const newStrategy: Strategy = {
+        id: newId,
+        name: newStrategyData.name,
+        description: newStrategyData.description,
+        status: 'Inactive', // Uploaded strategies likely start inactive for review/backtesting
+        pnl: 0,
+        winRate: 0,
+        source: 'Uploaded',
+        fileName: newStrategyData.fileName,
+    };
+    mockStrategies.push(newStrategy);
+    console.log("Added new strategy from file:", newStrategy.id, newStrategy.name);
     return newStrategy;
 }
 
@@ -112,7 +156,7 @@ export async function updateStrategy(strategyId: string, updates: Partial<Omit<S
 
 /**
  * Deletes a strategy.
- * TODO: Replace with actual data deletion logic.
+ * TODO: Replace with actual data deletion logic (including associated files if applicable).
  * @param strategyId The ID of the strategy to delete.
  * @returns A promise that resolves to true if deleted, false otherwise.
  */
@@ -120,6 +164,13 @@ export async function deleteStrategy(strategyId: string): Promise<boolean> {
     console.log(`Deleting strategy ${strategyId}`);
     await new Promise(resolve => setTimeout(resolve, 350 + Math.random() * 150));
     simulateError(0.1); // Simulate potential deletion error
+
+    // --- Backend actions needed here: ---
+    // 1. Find strategy metadata in the database.
+    // 2. If it's an uploaded strategy, delete the associated file from storage.
+    // 3. Delete the strategy metadata record from the database.
+    // -------------------------------------
+
     const initialLength = mockStrategies.length;
     mockStrategies = mockStrategies.filter(s => s.id !== strategyId);
     const deleted = mockStrategies.length < initialLength;
@@ -155,8 +206,8 @@ export async function suggestStrategyConfig(input: SuggestStrategyConfigInput): 
  * Simulates the process of generating, coding, backtesting a strategy based on AI suggestion.
  * In a real app, this would involve more complex steps:
  * 1. Call the LLM to generate code based on the suggested config (potentially another Genkit flow).
- * 2. Save the code.
- * 3. Trigger a backtesting process (potentially another agent or service).
+ * 2. Save the code (potentially using the backend file storage mechanism).
+ * 3. Trigger a backtesting process (potentially another agent or service, referencing the saved code).
  * 4. Parse backtest results.
  * 5. If successful, add the strategy using addStrategy.
  * @param suggestion The configuration suggested by the AI.
@@ -187,8 +238,8 @@ export async function generateAndTestStrategyFromSuggestion(suggestion: SuggestS
             const newStrategyData: Omit<Strategy, 'id' | 'pnl' | 'winRate'> = {
                 name: suggestion.strategyName,
                 description: `AI-generated (${suggestion.riskLevel} risk, exp. ${suggestion.expectedReturn}% return). Config: ${JSON.stringify(suggestion.configurationOptions)}`,
-                // Initial status might depend on auto-deploy settings
                 status: 'Inactive', // Default to Inactive unless auto-deploy is on
+                source: 'AI-Generated',
                 // parameters: suggestion.configurationOptions, // Store parameters if needed
             };
             // Use the actual addStrategy function which includes its own delay and error simulation
