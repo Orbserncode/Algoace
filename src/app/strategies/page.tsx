@@ -1,8 +1,11 @@
+'use client'; // Add 'use client' for onClick handler
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { StrategyTable } from './_components/strategy-table'; // Placeholder component
 import { AutomatedGenerationForm } from './_components/automated-generation-form'; // Placeholder component
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 // Dummy data for strategies
 const strategies = [
@@ -14,6 +17,13 @@ const strategies = [
 
 
 export default function StrategiesPage() {
+    const { toast } = useToast(); // Initialize toast
+
+    const handleAddNewStrategy = () => {
+        toast({ title: "Action Required", description: "Implement 'Add New Strategy' functionality (e.g., open a form/modal)." });
+        // TODO: Implement logic to add a new strategy, likely opening a form or modal
+    };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -22,12 +32,12 @@ export default function StrategiesPage() {
             <CardTitle>Manage Strategies</CardTitle>
             <CardDescription>View, configure, and manage your trading strategies.</CardDescription>
           </div>
-          <Button size="sm">
+          <Button size="sm" onClick={handleAddNewStrategy}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Strategy
           </Button>
         </CardHeader>
         <CardContent>
-          {/* Placeholder for strategy list/table */}
+          {/* Pass the strategies data to the table */}
           <StrategyTable strategies={strategies} />
         </CardContent>
       </Card>
@@ -38,7 +48,7 @@ export default function StrategiesPage() {
           <CardDescription>Configure the AI agent to automatically generate and test new strategies.</CardDescription>
         </CardHeader>
         <CardContent>
-           {/* Placeholder for automated generation config form */}
+           {/* The form itself handles its submission */}
            <AutomatedGenerationForm />
         </CardContent>
       </Card>

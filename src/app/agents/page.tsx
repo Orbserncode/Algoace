@@ -1,8 +1,11 @@
+'use client'; // Add 'use client' for onClick handlers and toast
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bot, PlusCircle, Activity, Settings, FileCode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from '@/lib/utils'; // Import cn utility
+import { cn } from '@/lib/utils';
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 // Mock agent data
 const agents = [
@@ -15,6 +18,19 @@ const agents = [
 
 
 export default function AgentsPage() {
+    const { toast } = useToast(); // Initialize toast
+
+    const handleAddAgent = () => {
+        toast({ title: "Action Required", description: "Implement 'Add New Agent' functionality." });
+    };
+
+    const handleViewLogs = (agentId: string) => {
+        toast({ title: "Action Required", description: `Implement log viewer for agent ${agentId}.` });
+    };
+
+    const handleConfigureAgent = (agentId: string) => {
+        toast({ title: "Action Required", description: `Implement configuration for agent ${agentId}.` });
+    };
 
     const getStatusBadgeVariant = (status: string) => {
         switch (status) {
@@ -37,7 +53,7 @@ export default function AgentsPage() {
             <CardTitle>Manage Agents</CardTitle>
             <CardDescription>Configure and monitor your trading agents.</CardDescription>
           </div>
-            <Button size="sm">
+            <Button size="sm" onClick={handleAddAgent}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add New Agent
             </Button>
         </CardHeader>
@@ -66,10 +82,10 @@ export default function AgentsPage() {
                                    <span className={cn(agent.errors > 0 ? "text-destructive" : "")}>{agent.errors}</span>
                               </div>
                               <div className="flex space-x-2 pt-2">
-                                 <Button variant="outline" size="sm">
+                                 <Button variant="outline" size="sm" onClick={() => handleViewLogs(agent.id)}>
                                      <Activity className="mr-1 h-3 w-3" /> Logs
                                  </Button>
-                                 <Button variant="outline" size="sm">
+                                 <Button variant="outline" size="sm" onClick={() => handleConfigureAgent(agent.id)}>
                                      <Settings className="mr-1 h-3 w-3" /> Configure
                                  </Button>
                               </div>

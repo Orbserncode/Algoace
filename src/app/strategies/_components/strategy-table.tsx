@@ -12,6 +12,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Edit, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast"; // Import useToast
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Import AlertDialog components
+
 
 interface Strategy {
   id: string;
@@ -24,9 +37,29 @@ interface Strategy {
 
 interface StrategyTableProps {
   strategies: Strategy[];
+  // TODO: Add functions to handle actions, e.g., onToggleStatus, onEdit, onDelete
 }
 
 export function StrategyTable({ strategies }: StrategyTableProps) {
+  const { toast } = useToast();
+
+  const handleToggleStatus = (strategyId: string, currentStatus: Strategy['status']) => {
+    const action = currentStatus === 'Active' ? 'Pause' : 'Start';
+    toast({ title: "Action Required", description: `Implement ${action} logic for strategy ${strategyId}.` });
+    // TODO: Implement actual status toggle logic
+  };
+
+  const handleEdit = (strategyId: string) => {
+    toast({ title: "Action Required", description: `Implement Edit functionality for strategy ${strategyId}.` });
+    // TODO: Implement edit logic (e.g., open modal, navigate to edit page)
+  };
+
+  const handleDelete = (strategyId: string) => {
+    toast({ title: "Action Required", description: `Implement Delete logic for strategy ${strategyId}.` });
+    // TODO: Implement delete logic (likely call a backend function)
+    console.log(`Deleting strategy ${strategyId}...`) // Simulate delete
+  };
+
 
   const getStatusBadgeVariant = (status: Strategy['status']) => {
     switch (status) {
@@ -76,20 +109,39 @@ export function StrategyTable({ strategies }: StrategyTableProps) {
             <TableCell className="text-right">
               <div className="flex justify-end space-x-1">
                  {strategy.status === 'Active' ? (
-                     <Button variant="ghost" size="icon" aria-label="Pause Strategy">
+                     <Button variant="ghost" size="icon" aria-label="Pause Strategy" onClick={() => handleToggleStatus(strategy.id, strategy.status)}>
                          <Pause className="h-4 w-4" />
                      </Button>
                  ) : (
-                      <Button variant="ghost" size="icon" aria-label="Start Strategy">
+                      <Button variant="ghost" size="icon" aria-label="Start Strategy" onClick={() => handleToggleStatus(strategy.id, strategy.status)} disabled={strategy.status === 'Debugging' || strategy.status === 'Backtesting'}>
                          <Play className="h-4 w-4" />
                      </Button>
                  )}
-                <Button variant="ghost" size="icon" aria-label="Edit Strategy">
+                <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => handleEdit(strategy.id)}>
                   <Edit className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete Strategy">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                 <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete Strategy">
+                        <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the strategy
+                            "{strategy.name}".
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDelete(strategy.id)} className={buttonVariants({ variant: "destructive" })}>
+                            Delete
+                        </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
               </div>
             </TableCell>
           </TableRow>
@@ -98,3 +150,6 @@ export function StrategyTable({ strategies }: StrategyTableProps) {
     </Table>
   );
 }
+
+// Need buttonVariants for destructive action styling
+import { buttonVariants } from "@/components/ui/button";
