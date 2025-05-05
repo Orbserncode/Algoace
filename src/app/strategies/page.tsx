@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, AlertTriangle } from "lucide-react";
 import { StrategyTable } from './_components/strategy-table';
 import { AutomatedGenerationForm } from './_components/automated-generation-form';
-import { AddStrategyDialog } from './_components/add-strategy-dialog'; // Import the new dialog
+import { AddStrategyDialog } from './_components/add-strategy-dialog';
 import { useToast } from "@/hooks/use-toast";
 import { getStrategies, Strategy } from '@/services/strategies-service';
 
@@ -16,7 +16,7 @@ export default function StrategiesPage() {
     const [strategies, setStrategies] = useState<Strategy[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false); // State for dialog
+    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
     const loadStrategies = useCallback(async () => {
         setIsLoading(true);
@@ -36,34 +36,31 @@ export default function StrategiesPage() {
             setIsLoading(false);
         }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast]); // Add toast, no need for strategies here as it causes loop
+    }, [toast]);
 
     useEffect(() => {
         loadStrategies();
-    }, [loadStrategies]); // Depend on the memoized loadStrategies
+    }, [loadStrategies]);
 
     const handleAddNewStrategy = () => {
-        setIsAddDialogOpen(true); // Open the dialog
+        setIsAddDialogOpen(true);
     };
 
-     // Callback for when a strategy is updated in the table
     const handleStrategyUpdate = useCallback((updatedStrategy: Strategy) => {
         setStrategies(prevStrategies =>
             prevStrategies.map(s => s.id === updatedStrategy.id ? updatedStrategy : s)
         );
-    }, []); // Empty dependency array as setStrategies is stable
+    }, []);
 
-     // Callback for when a strategy is deleted from the table
     const handleStrategyDelete = useCallback((deletedStrategyId: string) => {
         setStrategies(prevStrategies =>
             prevStrategies.filter(s => s.id !== deletedStrategyId)
         );
-    }, []); // Empty dependency array as setStrategies is stable
+    }, []);
 
-     // Callback for when a new strategy is generated or added
     const handleStrategyAdded = useCallback((newStrategy: Strategy) => {
-        setStrategies(prevStrategies => [...prevStrategies, newStrategy]);
-        setIsAddDialogOpen(false); // Close dialog on success
+        setStrategies(prevStrategies => [newStrategy, ...prevStrategies]); // Add new strategy to the beginning
+        setIsAddDialogOpen(false);
          toast({
             title: "Strategy Added",
             description: `New strategy "${newStrategy.name}" added to the list.`,
@@ -108,7 +105,7 @@ export default function StrategiesPage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <div>
               <CardTitle>Manage Strategies</CardTitle>
-              <CardDescription>View, manage, and add trading strategies.</CardDescription>
+              <CardDescription>View, manage, add, and backtest trading strategies.</CardDescription>
             </div>
             <Button size="sm" onClick={handleAddNewStrategy} disabled={isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Strategy
@@ -126,7 +123,7 @@ export default function StrategiesPage() {
             <CardDescription>Configure the AI agent to suggest, generate, and test new strategies.</CardDescription>
           </CardHeader>
           <CardContent>
-             <AutomatedGenerationForm onStrategyGenerated={handleStrategyAdded} /> {/* Use common handler */}
+             <AutomatedGenerationForm onStrategyGenerated={handleStrategyAdded} />
           </CardContent>
         </Card>
       </div>
@@ -135,8 +132,10 @@ export default function StrategiesPage() {
       <AddStrategyDialog
         isOpen={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
-        onStrategyAdded={handleStrategyAdded} // Pass the callback
+        onStrategyAdded={handleStrategyAdded}
       />
+
+      {/* Backtest Result Dialog is now rendered within StrategyTable when needed */}
     </>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode } from "lucide-react"; // Added icons
+import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode, History } from "lucide-react"; // Added History icon for Backtest
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,6 +29,7 @@ import {
 import type { Strategy } from '@/services/strategies-service'; // Import type
 import { updateStrategy, deleteStrategy } from '@/services/strategies-service'; // Import service functions
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip
+import { BacktestResultDialog } from './backtest-result-dialog'; // Import the new dialog
 
 interface StrategyTableProps {
   strategies: Strategy[];
@@ -38,26 +39,26 @@ interface StrategyTableProps {
 
 export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }: StrategyTableProps) {
   const { toast } = useToast();
-  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002")
+  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002", "backtest:strat-003")
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [isBacktestDialogOpen, setIsBacktestDialogOpen] = useState(false);
+  const [selectedStrategyForBacktest, setSelectedStrategyForBacktest] = useState<Strategy | null>(null);
 
   const handleToggleStatus = async (strategy: Strategy) => {
     const action = strategy.status === 'Active' ? 'Pause' : 'Start';
     const newStatus = strategy.status === 'Active' ? 'Inactive' : 'Active';
     const actionId = `toggle:${strategy.id}`;
 
-    setLoadingAction(actionId); // Set loading state for this specific action
+    setLoadingAction(actionId);
 
     try {
-      // Call the update service function
       const updated = await updateStrategy(strategy.id, { status: newStatus });
-
       if (updated) {
         toast({
           title: `Strategy ${action}d`,
           description: `Strategy "${updated.name}" is now ${updated.status}.`,
         });
-        onStrategyUpdate(updated); // Notify parent component of the update
+        onStrategyUpdate(updated);
       } else {
          throw new Error("Strategy not found or update failed.");
       }
@@ -69,18 +70,33 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
         variant: "destructive",
       });
     } finally {
-       setLoadingAction(null); // Clear loading state
+       setLoadingAction(null);
     }
   };
 
   const handleEdit = (strategyId: string) => {
-     // TODO: Implement edit logic (e.g., navigate to an edit page or open a modal)
     toast({ title: "Feature Not Implemented", description: `Editing strategy ${strategyId} is not yet available.` });
+  };
+
+   const handleBacktest = (strategy: Strategy) => {
+    console.log("Initiating backtest view for:", strategy.name);
+    setSelectedStrategyForBacktest(strategy);
+    setIsBacktestDialogOpen(true);
+    // In a real app, you might trigger the backtest run here if it's not pre-computed
+    // setLoadingAction(`backtest:${strategy.id}`);
+    // try {
+    //   await runBacktest(strategy.id, { /* params */ });
+    //   toast({ title: "Backtest Started", description: `Backtest for ${strategy.name} is running.` });
+    // } catch (error) {
+    //   toast({ title: "Backtest Error", description: `Could not start backtest for ${strategy.name}.`, variant: "destructive" });
+    // } finally {
+    //   setLoadingAction(null);
+    // }
   };
 
   const handleDeleteConfirm = async (strategy: Strategy) => {
     const actionId = `delete:${strategy.id}`;
-    setLoadingAction(actionId); // Set loading state for delete action
+    setLoadingAction(actionId);
 
      try {
         const deleted = await deleteStrategy(strategy.id);
@@ -89,7 +105,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                 title: "Strategy Deleted",
                 description: `Strategy "${strategy.name}" has been permanently deleted.`,
             });
-            onStrategyDelete(strategy.id); // Notify parent component
+            onStrategyDelete(strategy.id);
         } else {
              throw new Error("Strategy not found or deletion failed.");
         }
@@ -101,7 +117,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             variant: "destructive",
          });
      } finally {
-         setLoadingAction(null); // Clear loading state
+         setLoadingAction(null);
      }
   };
 
@@ -109,19 +125,19 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
   const getStatusBadgeVariant = (status: Strategy['status']) => {
     switch (status) {
       case 'Active':
-        return 'default'; // Using primary color
+        return 'default';
       case 'Inactive':
-        return 'secondary'; // Gray
+        return 'secondary';
       case 'Debugging':
       case 'Backtesting':
-        return 'outline'; // Outline with foreground text color
+        return 'outline';
       default:
         return 'secondary';
     }
   };
 
   const formatCurrency = (amount: number | undefined) => {
-     if (typeof amount !== 'number') return '-'; // Handle undefined or non-numeric
+     if (typeof amount !== 'number') return '-';
      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   }
 
@@ -132,6 +148,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
 
 
   return (
+     <>
     <TooltipProvider>
       <Table>
         <TableHeader>
@@ -139,10 +156,10 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             <TableHead className="w-[200px]">Name</TableHead>
             <TableHead className="hidden lg:table-cell">Description</TableHead>
             <TableHead className="w-[100px]">Status</TableHead>
-            <TableHead className="w-[100px] hidden md:table-cell">Source</TableHead> {/* Added Source */}
+            <TableHead className="w-[100px] hidden md:table-cell">Source</TableHead>
             <TableHead className="text-right hidden sm:table-cell w-[120px]">P&L (USD)</TableHead>
             <TableHead className="text-right hidden lg:table-cell w-[100px]">Win Rate</TableHead>
-            <TableHead className="text-right w-[160px]">Actions</TableHead>
+            <TableHead className="text-right w-[200px]">Actions</TableHead> {/* Increased width for new button */}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -157,20 +174,22 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
           {strategies.map((strategy) => {
               const isToggling = loadingAction === `toggle:${strategy.id}`;
               const isDeleting = loadingAction === `delete:${strategy.id}`;
-              const isAnyLoading = isToggling || isDeleting;
+              const isBacktesting = loadingAction === `backtest:${strategy.id}`; // Track backtest loading if needed
+              const isAnyLoading = isToggling || isDeleting || isBacktesting;
 
               return (
                 <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
-                  {/* Ensure no extra whitespace between TableCell components */}
-                  <TableCell className="font-medium">{strategy.name}</TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground max-w-xs truncate" title={strategy.description}>{strategy.description}</TableCell><TableCell>
+                  <TableCell className="font-medium">{strategy.name}</TableCell>
+                  <TableCell className="hidden lg:table-cell text-sm text-muted-foreground max-w-xs truncate" title={strategy.description}>{strategy.description}</TableCell>
+                  <TableCell>
                     <Badge variant={getStatusBadgeVariant(strategy.status)}>{strategy.status}</Badge>
-                  </TableCell><TableCell className="hidden md:table-cell">
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
                       {strategy.source && (
                            <Tooltip>
                               <TooltipTrigger asChild>
                                   <span className="flex items-center gap-1 text-muted-foreground">
                                     {strategy.source === 'AI-Generated' ? <BrainCircuit className="h-4 w-4" /> : <FileCode className="h-4 w-4" />}
-                                    {/* <span className="hidden xl:inline">{strategy.source}</span> */}
                                   </span>
                               </TooltipTrigger>
                                <TooltipContent>
@@ -181,18 +200,21 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                </TooltipContent>
                            </Tooltip>
                       )}
-                    </TableCell><TableCell className={cn(
-                       "text-right hidden sm:table-cell tabular-nums", // Use tabular-nums for alignment
+                    </TableCell>
+                  <TableCell className={cn(
+                       "text-right hidden sm:table-cell tabular-nums",
                        typeof strategy.pnl === 'number' && (strategy.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")
-                   )}>{formatCurrency(strategy.pnl)}</TableCell><TableCell className="text-right hidden lg:table-cell tabular-nums">{formatPercentage(strategy.winRate)}</TableCell><TableCell className="text-right">
+                   )}>{formatCurrency(strategy.pnl)}</TableCell>
+                  <TableCell className="text-right hidden lg:table-cell tabular-nums">{formatPercentage(strategy.winRate)}</TableCell>
+                  <TableCell className="text-right">
                     <div className="flex justify-end space-x-1 items-center">
-                       {/* Show loader specific to action */}
                        {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
                        {isDeleting && <Loader2 className="h-4 w-4 animate-spin text-destructive mr-1" />}
+                       {isBacktesting && <Loader2 className="h-4 w-4 animate-spin text-accent mr-1" />}
 
-                       {/* Action Buttons */}
                        {!isAnyLoading && (
                            <>
+                               {/* Start/Pause Button */}
                                {(strategy.status === 'Active' || strategy.status === 'Inactive') && (
                                   <Tooltip>
                                       <TooltipTrigger asChild>
@@ -205,6 +227,20 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                        </TooltipContent>
                                   </Tooltip>
                                )}
+
+                               {/* Backtest Button */}
+                              <Tooltip>
+                                  <TooltipTrigger asChild>
+                                       <Button variant="ghost" size="icon" aria-label="View Backtest Results" onClick={() => handleBacktest(strategy)} disabled={isAnyLoading}>
+                                        <History className="h-4 w-4" />
+                                       </Button>
+                                  </TooltipTrigger>
+                                   <TooltipContent>
+                                      <p>View Backtest Results</p>
+                                   </TooltipContent>
+                              </Tooltip>
+
+                               {/* Edit Button */}
                               <Tooltip>
                                   <TooltipTrigger asChild>
                                        <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => handleEdit(strategy.id)} disabled={isAnyLoading}>
@@ -215,6 +251,8 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                       <p>Edit Strategy (Not Implemented)</p>
                                    </TooltipContent>
                               </Tooltip>
+
+                               {/* Delete Button */}
                                <AlertDialog>
                                   <Tooltip>
                                       <TooltipTrigger asChild>
@@ -235,13 +273,11 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                           This action cannot be undone. This will permanently delete the strategy
                                           "{strategy.name}".
                                           {strategy.fileName && ` (File: ${strategy.fileName})`}
-                                          {/* TODO: Clarify if the file itself gets deleted */}
                                       </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                       <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                                       <AlertDialogAction onClick={() => handleDeleteConfirm(strategy)} className={buttonVariants({ variant: "destructive" })} disabled={isDeleting}>
-                                          {/* Delete action does not need internal spinner, handled above */}
                                           Delete
                                       </AlertDialogAction>
                                       </AlertDialogFooter>
@@ -257,5 +293,15 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
         </TableBody>
       </Table>
     </TooltipProvider>
+
+    {/* Backtest Result Dialog */}
+     {selectedStrategyForBacktest && (
+        <BacktestResultDialog
+            isOpen={isBacktestDialogOpen}
+            onOpenChange={setIsBacktestDialogOpen}
+            strategy={selectedStrategyForBacktest}
+        />
+     )}
+    </>
   );
 }
