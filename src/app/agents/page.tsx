@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Bot, PlusCircle, Activity, Settings, FileCode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from '@/lib/utils'; // Import cn utility
 
 // Mock agent data
 const agents = [
