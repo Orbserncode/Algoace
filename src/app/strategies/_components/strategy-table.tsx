@@ -161,14 +161,12 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
 
               return (
                 <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
-                  <TableCell className="font-medium">{strategy.name}</TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm text-muted-foreground max-w-xs truncate" title={strategy.description}>
+                  {/* Ensure no extra whitespace between cells */}
+                  <TableCell className="font-medium">{strategy.name}</TableCell><TableCell className="hidden lg:table-cell text-sm text-muted-foreground max-w-xs truncate" title={strategy.description}>
                       {strategy.description}
-                  </TableCell>
-                  <TableCell>
+                  </TableCell><TableCell>
                     <Badge variant={getStatusBadgeVariant(strategy.status)}>{strategy.status}</Badge>
-                  </TableCell>
-                   <TableCell className="hidden md:table-cell">
+                  </TableCell><TableCell className="hidden md:table-cell">
                       {strategy.source && (
                            <Tooltip>
                               <TooltipTrigger asChild>
@@ -185,17 +183,14 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                </TooltipContent>
                            </Tooltip>
                       )}
-                    </TableCell>
-                   <TableCell className={cn(
+                    </TableCell><TableCell className={cn(
                        "text-right hidden sm:table-cell tabular-nums", // Use tabular-nums for alignment
                        typeof strategy.pnl === 'number' && (strategy.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")
                    )}>
                       {formatCurrency(strategy.pnl)}
-                   </TableCell>
-                   <TableCell className="text-right hidden lg:table-cell tabular-nums">
+                   </TableCell><TableCell className="text-right hidden lg:table-cell tabular-nums">
                        {formatPercentage(strategy.winRate)}
-                   </TableCell>
-                  <TableCell className="text-right">
+                   </TableCell><TableCell className="text-right">
                     <div className="flex justify-end space-x-1 items-center">
                        {/* Show loader specific to action */}
                        {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
