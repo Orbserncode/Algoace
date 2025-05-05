@@ -4,6 +4,8 @@
  * @fileOverview Service functions for fetching and managing trading strategies.
  * Replace mock implementations with actual data fetching logic (e.g., from a database or configuration files).
  */
+import { SuggestStrategyConfigInput, SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config'; // Ensure flow types are imported
+import { suggestStrategyConfig as suggestStrategyConfigFlow } from '@/ai/flows/suggest-strategy-config'; // Import the actual flow function
 
 export interface Strategy {
   id: string;
@@ -16,6 +18,7 @@ export interface Strategy {
 }
 
 // Mock data - replace with actual data source
+// Use `let` to allow modification by add/update/delete functions
 let mockStrategies: Strategy[] = [
   { id: 'strat-001', name: 'Momentum Burst', description: 'Captures short-term price surges.', status: 'Active', pnl: 1250.75, winRate: 65.2 },
   { id: 'strat-002', name: 'Mean Reversion Scalper', description: 'Trades price deviations from the mean.', status: 'Inactive', pnl: -340.10, winRate: 48.9 },
@@ -23,14 +26,23 @@ let mockStrategies: Strategy[] = [
   { id: 'strat-004', name: 'Arbitrage Finder', description: 'Exploits price differences across exchanges.', status: 'Debugging', pnl: 0, winRate: 0 },
 ];
 
+// Simulate potential API/DB errors
+const simulateError = (probability = 0.1) => {
+    if (Math.random() < probability) {
+        throw new Error("Simulated service error.");
+    }
+}
+
 /**
  * Fetches the list of all trading strategies.
  * TODO: Replace with actual data fetching logic (e.g., from database).
  * @returns A promise that resolves to an array of Strategy objects.
  */
 export async function getStrategies(): Promise<Strategy[]> {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 600));
+  console.log("Fetching strategies...");
+  await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400)); // Slightly variable delay
+  simulateError(0.05); // 5% chance of error on fetch
+  console.log("Fetched strategies:", mockStrategies.length);
   // In a real app, fetch from database or config store
   return [...mockStrategies]; // Return a copy to prevent direct mutation
 }
@@ -42,8 +54,11 @@ export async function getStrategies(): Promise<Strategy[]> {
  * @returns A promise that resolves to the Strategy object or null if not found.
  */
 export async function getStrategyById(strategyId: string): Promise<Strategy | null> {
-    await new Promise(resolve => setTimeout(resolve, 250));
+    console.log(`Fetching strategy by ID: ${strategyId}`);
+    await new Promise(resolve => setTimeout(resolve, 250 + Math.random() * 200));
+    simulateError(0.02); // Lower chance for single fetch
     const strategy = mockStrategies.find(s => s.id === strategyId);
+    console.log(strategy ? `Found strategy: ${strategy.name}` : `Strategy ${strategyId} not found.`);
     return strategy || null;
 }
 
@@ -54,8 +69,10 @@ export async function getStrategyById(strategyId: string): Promise<Strategy | nu
  * @returns A promise that resolves to the newly created Strategy object.
  */
 export async function addStrategy(newStrategyData: Omit<Strategy, 'id' | 'pnl' | 'winRate'>): Promise<Strategy> {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    const newId = `strat-${String(Date.now()).slice(-3)}${Math.floor(Math.random() * 100)}`; // Simple unique ID generation
+    console.log("Adding new strategy:", newStrategyData.name);
+    await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 200));
+    simulateError(0.1); // Simulate potential creation error
+    const newId = `strat-${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 90 + 10)}`; // Slightly better unique ID
     const newStrategy: Strategy = {
         ...newStrategyData,
         id: newId,
@@ -64,7 +81,7 @@ export async function addStrategy(newStrategyData: Omit<Strategy, 'id' | 'pnl' |
         status: newStrategyData.status || 'Inactive', // Default status
     };
     mockStrategies.push(newStrategy);
-    console.log("Added new strategy:", newStrategy);
+    console.log("Added new strategy:", newStrategy.id, newStrategy.name);
     return newStrategy;
 }
 
@@ -77,15 +94,20 @@ export async function addStrategy(newStrategyData: Omit<Strategy, 'id' | 'pnl' |
  * @returns A promise that resolves to the updated Strategy object or null if not found.
  */
 export async function updateStrategy(strategyId: string, updates: Partial<Omit<Strategy, 'id'>>): Promise<Strategy | null> {
-    await new Promise(resolve => setTimeout(resolve, 300));
+    console.log(`Updating strategy ${strategyId} with:`, updates);
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 150));
+    simulateError(0.1); // Simulate potential update error
     const index = mockStrategies.findIndex(s => s.id === strategyId);
     if (index === -1) {
+        console.warn(`Strategy ${strategyId} not found for update.`);
         return null;
     }
     // Merge updates, ensuring not to overwrite the ID
-    mockStrategies[index] = { ...mockStrategies[index], ...updates };
-    console.log(`Updated strategy ${strategyId}:`, updates);
-    return mockStrategies[index];
+    // Create a new object to ensure immutability for state updates
+    const updatedStrategy = { ...mockStrategies[index], ...updates };
+    mockStrategies[index] = updatedStrategy;
+    console.log(`Updated strategy ${strategyId}:`, updatedStrategy);
+    return updatedStrategy; // Return the new object
 }
 
 /**
@@ -95,7 +117,9 @@ export async function updateStrategy(strategyId: string, updates: Partial<Omit<S
  * @returns A promise that resolves to true if deleted, false otherwise.
  */
 export async function deleteStrategy(strategyId: string): Promise<boolean> {
-    await new Promise(resolve => setTimeout(resolve, 350));
+    console.log(`Deleting strategy ${strategyId}`);
+    await new Promise(resolve => setTimeout(resolve, 350 + Math.random() * 150));
+    simulateError(0.1); // Simulate potential deletion error
     const initialLength = mockStrategies.length;
     mockStrategies = mockStrategies.filter(s => s.id !== strategyId);
     const deleted = mockStrategies.length < initialLength;
@@ -107,23 +131,30 @@ export async function deleteStrategy(strategyId: string): Promise<boolean> {
     return deleted;
 }
 
-// --- Potential AI-related functions ---
+// --- AI-related functions ---
 
 /**
  * Calls the Genkit flow to suggest a strategy configuration.
- * This function remains largely the same, calling the existing AI flow.
+ * This function directly calls the imported AI flow function.
  */
-import { suggestStrategyConfig as suggestStrategyConfigFlow, SuggestStrategyConfigInput, SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config';
-
 export async function suggestStrategyConfig(input: SuggestStrategyConfigInput): Promise<SuggestStrategyConfigOutput> {
-    // Input validation could be added here
-    return suggestStrategyConfigFlow(input);
+    console.log("Calling Genkit flow 'suggestStrategyConfig'...");
+    try {
+        // Input validation could be added here before calling the flow
+        const result = await suggestStrategyConfigFlow(input);
+        console.log("Genkit flow 'suggestStrategyConfig' successful.");
+        return result;
+    } catch (error) {
+         console.error("Error calling Genkit flow 'suggestStrategyConfig':", error);
+         // Re-throw or handle error appropriately
+         throw new Error(`AI suggestion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 /**
  * Simulates the process of generating, coding, backtesting a strategy based on AI suggestion.
  * In a real app, this would involve more complex steps:
- * 1. Call the LLM to generate code based on the suggested config.
+ * 1. Call the LLM to generate code based on the suggested config (potentially another Genkit flow).
  * 2. Save the code.
  * 3. Trigger a backtesting process (potentially another agent or service).
  * 4. Parse backtest results.
@@ -132,25 +163,50 @@ export async function suggestStrategyConfig(input: SuggestStrategyConfigInput): 
  * @returns A promise resolving to the new Strategy if successful, null otherwise.
  */
 export async function generateAndTestStrategyFromSuggestion(suggestion: SuggestStrategyConfigOutput): Promise<Strategy | null> {
-    console.log(`Simulating generation for: ${suggestion.strategyName}`);
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000)); // Simulate coding & backtesting
+    console.log(`Simulating generation & backtesting for: ${suggestion.strategyName}`);
+    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000)); // Simulate coding & backtesting (longer delay)
 
-    // Simulate success/failure
-    const isSuccessful = Math.random() > 0.3; // 70% success rate for simulation
+    // Simulate success/failure based on suggestion (e.g., higher risk might fail more often)
+    let successRate = 0.7; // Base success rate
+    if (suggestion.riskLevel === 'high') successRate = 0.5;
+    if (suggestion.riskLevel === 'low') successRate = 0.8;
+    const isSuccessful = Math.random() < successRate;
+
+    // Simulate potential random errors during the process
+    try {
+         simulateError(0.15); // 15% chance of random error during generation/backtest
+    } catch(error) {
+        console.error(`Simulated error during generation/backtest for ${suggestion.strategyName}:`, error);
+        throw new Error(`Generation/Backtesting process failed unexpectedly for ${suggestion.strategyName}.`);
+    }
+
 
     if (isSuccessful) {
         console.log(`Backtesting successful for ${suggestion.strategyName}. Adding to strategies.`);
-        const newStrategyData: Omit<Strategy, 'id' | 'pnl' | 'winRate'> = {
-            name: suggestion.strategyName,
-            description: `AI-generated based on ${suggestion.riskLevel} risk, expected ${suggestion.expectedReturn}% return.`,
-            // Initial status might depend on auto-deploy settings
-            status: 'Inactive', // Default to Inactive unless auto-deploy is on
-            // parameters: suggestion.configurationOptions, // Store parameters if needed
-        };
-        const createdStrategy = await addStrategy(newStrategyData);
-        return createdStrategy;
+        try {
+            const newStrategyData: Omit<Strategy, 'id' | 'pnl' | 'winRate'> = {
+                name: suggestion.strategyName,
+                description: `AI-generated (${suggestion.riskLevel} risk, exp. ${suggestion.expectedReturn}% return). Config: ${JSON.stringify(suggestion.configurationOptions)}`,
+                // Initial status might depend on auto-deploy settings
+                status: 'Inactive', // Default to Inactive unless auto-deploy is on
+                // parameters: suggestion.configurationOptions, // Store parameters if needed
+            };
+            // Use the actual addStrategy function which includes its own delay and error simulation
+            const createdStrategy = await addStrategy(newStrategyData);
+            // Simulate assigning some realistic (maybe slightly random) initial PnL/WinRate after "backtest"
+             if (createdStrategy) {
+                 createdStrategy.pnl = (Math.random() - 0.4) * 500; // Example: Random PnL around 0
+                 createdStrategy.winRate = 40 + Math.random() * 30; // Example: Win rate between 40-70%
+                 await updateStrategy(createdStrategy.id, { pnl: createdStrategy.pnl, winRate: createdStrategy.winRate });
+             }
+            return createdStrategy;
+        } catch (addError) {
+             console.error(`Failed to add successfully backtested strategy ${suggestion.strategyName}:`, addError);
+             // Even if backtest was "successful", adding might fail
+             throw new Error(`Failed to save the generated strategy ${suggestion.strategyName} after successful backtest.`);
+        }
     } else {
-        console.log(`Backtesting failed for ${suggestion.strategyName}.`);
-        return null;
+        console.log(`Backtesting failed for ${suggestion.strategyName}. Strategy not added.`);
+        return null; // Indicate failure clearly
     }
 }

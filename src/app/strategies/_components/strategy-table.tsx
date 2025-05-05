@@ -36,18 +36,19 @@ interface StrategyTableProps {
 
 export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }: StrategyTableProps) {
   const { toast } = useToast();
-  const [updatingStrategies, setUpdatingStrategies] = useState<Set<string>>(new Set()); // Track loading state per strategy
+  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002")
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const handleToggleStatus = async (strategy: Strategy) => {
     const action = strategy.status === 'Active' ? 'Pause' : 'Start';
     const newStatus = strategy.status === 'Active' ? 'Inactive' : 'Active';
-    const strategyId = strategy.id;
+    const actionId = `toggle:${strategy.id}`;
 
-    setUpdatingStrategies(prev => new Set(prev).add(strategyId)); // Add to loading set
+    setLoadingAction(actionId); // Set loading state for this specific action
 
     try {
       // Call the update service function
-      const updated = await updateStrategy(strategyId, { status: newStatus });
+      const updated = await updateStrategy(strategy.id, { status: newStatus });
 
       if (updated) {
         toast({
@@ -59,18 +60,14 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
          throw new Error("Strategy not found or update failed.");
       }
     } catch (error) {
-      console.error(`Failed to ${action} strategy ${strategyId}:`, error);
+      console.error(`Failed to ${action} strategy ${strategy.id}:`, error);
       toast({
         title: `Error ${action}ing Strategy`,
-        description: `Could not ${action.toLowerCase()} strategy "${strategy.name}". Please try again.`,
+        description: `Could not ${action.toLowerCase()} strategy "${strategy.name}". ${error instanceof Error ? error.message : 'Please try again.'}`,
         variant: "destructive",
       });
     } finally {
-       setUpdatingStrategies(prev => { // Remove from loading set
-            const next = new Set(prev);
-            next.delete(strategyId);
-            return next;
-       });
+       setLoadingAction(null); // Clear loading state
     }
   };
 
@@ -80,33 +77,29 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
   };
 
   const handleDeleteConfirm = async (strategy: Strategy) => {
-    const strategyId = strategy.id;
-    setUpdatingStrategies(prev => new Set(prev).add(strategyId)); // Add to loading set
+    const actionId = `delete:${strategy.id}`;
+    setLoadingAction(actionId); // Set loading state for delete action
 
      try {
-        const deleted = await deleteStrategy(strategyId);
+        const deleted = await deleteStrategy(strategy.id);
         if (deleted) {
             toast({
                 title: "Strategy Deleted",
                 description: `Strategy "${strategy.name}" has been permanently deleted.`,
             });
-            onStrategyDelete(strategyId); // Notify parent component
+            onStrategyDelete(strategy.id); // Notify parent component
         } else {
              throw new Error("Strategy not found or deletion failed.");
         }
      } catch (error) {
-         console.error(`Failed to delete strategy ${strategyId}:`, error);
+         console.error(`Failed to delete strategy ${strategy.id}:`, error);
          toast({
             title: "Error Deleting Strategy",
-            description: `Could not delete strategy "${strategy.name}". Please try again.`,
+            description: `Could not delete strategy "${strategy.name}". ${error instanceof Error ? error.message : 'Please try again.'}`,
             variant: "destructive",
          });
      } finally {
-         setUpdatingStrategies(prev => { // Remove from loading set
-            const next = new Set(prev);
-            next.delete(strategyId);
-            return next;
-         });
+         setLoadingAction(null); // Clear loading state
      }
   };
 
@@ -114,20 +107,27 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
   const getStatusBadgeVariant = (status: Strategy['status']) => {
     switch (status) {
       case 'Active':
-        return 'default';
+        return 'default'; // Using primary color (often green-ish or blue-ish)
       case 'Inactive':
-        return 'secondary';
+        return 'secondary'; // Gray
       case 'Debugging':
       case 'Backtesting':
-        return 'outline';
+        return 'outline'; // Outline with foreground text color
       default:
         return 'secondary';
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | undefined) => {
+     if (typeof amount !== 'number') return '-'; // Handle undefined or non-numeric
      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   }
+
+   const formatPercentage = (value: number | undefined) => {
+    if (typeof value !== 'number') return '-';
+    return `${value.toFixed(1)}%`;
+  }
+
 
   return (
     <Table>
@@ -138,7 +138,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
           <TableHead>Status</TableHead>
           <TableHead className="text-right hidden sm:table-cell">P&L (USD)</TableHead>
           <TableHead className="text-right hidden lg:table-cell">Win Rate</TableHead>
-          <TableHead className="text-right w-[150px]">Actions</TableHead> {/* Fixed width for actions */}
+          <TableHead className="text-right w-[160px]">Actions</TableHead> {/* Slightly wider for loading icon */}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -150,38 +150,48 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             </TableRow>
          )}
         {strategies.map((strategy) => {
-            const isLoading = updatingStrategies.has(strategy.id);
+            const isToggling = loadingAction === `toggle:${strategy.id}`;
+            const isDeleting = loadingAction === `delete:${strategy.id}`;
+            const isAnyLoading = isToggling || isDeleting;
+
             return (
-              <TableRow key={strategy.id} className={cn(isLoading && "opacity-50 pointer-events-none")}>
+              <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
                 <TableCell className="font-medium">{strategy.name}</TableCell>
-                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{strategy.description}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-xs truncate" title={strategy.description}>
+                    {strategy.description}
+                </TableCell>
                 <TableCell>
                   <Badge variant={getStatusBadgeVariant(strategy.status)}>{strategy.status}</Badge>
                 </TableCell>
                  <TableCell className={cn(
                      "text-right hidden sm:table-cell tabular-nums", // Use tabular-nums for alignment
-                     strategy.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                     typeof strategy.pnl === 'number' && (strategy.pnl >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")
                  )}>
                     {formatCurrency(strategy.pnl)}
                  </TableCell>
-                 <TableCell className="text-right hidden lg:table-cell tabular-nums">{strategy.winRate.toFixed(1)}%</TableCell>
+                 <TableCell className="text-right hidden lg:table-cell tabular-nums">
+                     {formatPercentage(strategy.winRate)}
+                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end space-x-1">
-                     {isLoading ? (
-                         <Loader2 className="h-4 w-4 animate-spin" />
-                     ) : (
+                  <div className="flex justify-end space-x-1 items-center">
+                     {/* Show loader specific to action */}
+                     {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
+                     {isDeleting && <Loader2 className="h-4 w-4 animate-spin text-destructive mr-1" />}
+
+                     {/* Action Buttons */}
+                     {!isAnyLoading && (
                          <>
                              {(strategy.status === 'Active' || strategy.status === 'Inactive') && (
-                                 <Button variant="ghost" size="icon" aria-label={strategy.status === 'Active' ? "Pause Strategy" : "Start Strategy"} onClick={() => handleToggleStatus(strategy)} disabled={isLoading}>
+                                 <Button variant="ghost" size="icon" aria-label={strategy.status === 'Active' ? "Pause Strategy" : "Start Strategy"} onClick={() => handleToggleStatus(strategy)} disabled={isAnyLoading}>
                                      {strategy.status === 'Active' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                                  </Button>
                              )}
-                            <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => handleEdit(strategy.id)} disabled={isLoading}>
+                            <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => handleEdit(strategy.id)} disabled={isAnyLoading}>
                               <Edit className="h-4 w-4" />
                             </Button>
                              <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete Strategy" disabled={isLoading}>
+                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete Strategy" disabled={isAnyLoading}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </AlertDialogTrigger>
@@ -194,9 +204,10 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                     </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                    <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeleteConfirm(strategy)} className={buttonVariants({ variant: "destructive" })} disabled={isLoading}>
-                                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+                                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteConfirm(strategy)} className={buttonVariants({ variant: "destructive" })} disabled={isDeleting}>
+                                        {/* Delete action does not need internal spinner, handled above */}
+                                        Delete
                                     </AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>

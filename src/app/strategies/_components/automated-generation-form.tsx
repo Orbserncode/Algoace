@@ -24,15 +24,15 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 import { toast } from "@/hooks/use-toast";
 import { suggestStrategyConfig, generateAndTestStrategyFromSuggestion, Strategy } from '@/services/strategies-service'; // Import service functions
-import { SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config'; // Keep type import
+import { SuggestStrategyConfigInput, SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config'; // Keep type import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'; // Import Card components
 import { Badge } from '@/components/ui/badge'; // Import Badge
 
 const formSchema = z.object({
-  marketConditions: z.string().min(1, { message: "Market conditions are required." }).describe("Current market conditions (e.g., bullish, bearish, volatile)"),
+  marketConditions: z.string().min(3, { message: "Market conditions must be at least 3 characters." }).describe("Current market conditions (e.g., bullish, bearish, volatile)"),
   riskTolerance: z.enum(["low", "medium", "high"]).describe("User's risk tolerance level"),
   historicalDataInput: z.string().optional().describe("Paste historical performance data (JSON format) or leave blank to use default examples"), // Clarified description
   generationSchedule: z.enum(["manual", "daily", "weekly", "startup"]).default("manual"),
@@ -53,10 +53,18 @@ interface AutomatedGenerationFormProps {
     onStrategyGenerated: (newStrategy: Strategy) => void; // Callback prop
 }
 
+// Enum for loading states
+enum GenerationState {
+    IDLE = 'idle',
+    SUGGESTING = 'suggesting',
+    GENERATING = 'generating', // Represents coding and backtesting phase
+}
+
 
 export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenerationFormProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationState, setGenerationState] = useState<GenerationState>(GenerationState.IDLE);
   const [suggestedConfig, setSuggestedConfig] = useState<SuggestStrategyConfigOutput | null>(null); // Use the specific type
+  const [generationError, setGenerationError] = useState<string | null>(null); // Store specific error message
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -70,10 +78,13 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
     },
   });
 
+  const isProcessing = generationState !== GenerationState.IDLE;
+
 
   async function onSubmit(values: FormData) {
-    setIsGenerating(true);
+    setGenerationState(GenerationState.SUGGESTING);
     setSuggestedConfig(null); // Clear previous suggestions
+    setGenerationError(null); // Clear previous errors
 
     console.log("Form submitted:", values);
 
@@ -94,11 +105,11 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
 
     try {
       // 1. Get Suggestion from AI
-      const suggestionInput = {
+      const suggestionInput: SuggestStrategyConfigInput = {
         marketConditions: values.marketConditions,
         riskTolerance: values.riskTolerance,
         historicalPerformanceData: historicalDataToUse,
-        // customPrompt needs to be handled differently, perhaps by modifying the flow or adding another step
+        // customPrompt is not used by the flow currently
       };
 
       console.log("Calling suggestStrategyConfig with input:", suggestionInput);
@@ -112,22 +123,26 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
       });
 
       // 2. Attempt Generation & Backtesting (using the service function)
+      setGenerationState(GenerationState.GENERATING); // Update state
        // Pass autoDeploy preference if needed by the service function
       const newStrategy = await generateAndTestStrategyFromSuggestion(suggestionResult /*, values.autoDeploy */);
 
       if (newStrategy) {
          toast({
             title: "New Strategy Generated!",
-            description: `Successfully generated and backtested '${newStrategy.name}'. It has been added to your strategies list.`,
+            description: `Successfully generated and backtested '${newStrategy.name}'.`,
             variant: "default",
           });
           onStrategyGenerated(newStrategy); // Call the callback with the new strategy
           // Optionally reset parts of the form?
           // form.resetField("marketConditions");
+          setSuggestedConfig(null); // Clear suggestion after success
       } else {
+           const failureMsg = `The suggested strategy '${suggestionResult.strategyName}' did not pass backtesting or encountered an error during generation.`;
+           setGenerationError(failureMsg);
            toast({
             title: "Strategy Generation Failed",
-            description: `The suggested strategy '${suggestionResult.strategyName}' did not pass backtesting or encountered an error.`,
+            description: failureMsg,
             variant: "destructive",
           });
       }
@@ -135,14 +150,15 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
     } catch (error: any) { // Catch specific error type if possible
       console.error("Error during strategy generation process:", error);
       const errorMessage = error.message || "An unknown error occurred.";
+       setGenerationError(`Failed to generate or suggest strategy: ${errorMessage}`);
       toast({
-        title: "Generation Error",
+        title: "Generation Process Error",
         description: `Failed to generate or suggest strategy: ${errorMessage}`,
         variant: "destructive",
       });
        setSuggestedConfig(null); // Clear suggestion on error
     } finally {
-      setIsGenerating(false);
+      setGenerationState(GenerationState.IDLE); // Return to idle state
     }
   }
 
@@ -158,7 +174,7 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
               <FormItem>
                 <FormLabel>Current Market Conditions</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g., Bullish, Volatile, Sideways" {...field} />
+                  <Input placeholder="e.g., Bullish, Volatile, Sideways" {...field} disabled={isProcessing}/>
                 </FormControl>
                 <FormDescription>Describe the current market environment.</FormDescription>
                 <FormMessage />
@@ -171,7 +187,7 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Risk Tolerance</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isProcessing}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select risk level" />
@@ -201,6 +217,7 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
                     placeholder={`Paste JSON data here, e.g., ${JSON.stringify(JSON.parse(defaultHistoricalData)[0])} ... or leave blank to use default examples.`}
                     className="min-h-[100px] font-mono text-xs" // Use mono font for JSON
                     {...field}
+                    disabled={isProcessing}
                   />
                 </FormControl>
                 <FormDescription>Provide past strategy results (JSON format) for better suggestions. If blank, example data will be used.</FormDescription>
@@ -217,7 +234,7 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Generation Schedule</FormLabel>
-                 <Select onValueChange={field.onChange} defaultValue={field.value}>
+                 <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isProcessing}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select schedule" />
@@ -253,6 +270,7 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
                     checked={field.value}
                     onCheckedChange={field.onChange}
                     aria-readonly // Mark as potentially not fully functional yet
+                    disabled={isProcessing}
                   />
                 </FormControl>
                  <FormMessage />
@@ -281,9 +299,14 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
           />
 
 
-        <Button type="submit" disabled={isGenerating}>
-          {isGenerating ? (
+        <Button type="submit" disabled={isProcessing}>
+          {generationState === GenerationState.SUGGESTING ? (
             <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Getting Suggestion...
+            </>
+          ) : generationState === GenerationState.GENERATING ? (
+             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Generating & Testing...
             </>
@@ -294,12 +317,12 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
       </form>
     </Form>
 
-     {/* Display Suggested Configuration */}
+     {/* Display Suggested Configuration or Error */}
       {suggestedConfig && (
-        <Card className="mt-6 border-dashed border-accent">
+        <Card className="mt-6 border-dashed border-accent animate-fade-in">
           <CardHeader>
             <CardTitle>AI Strategy Suggestion</CardTitle>
-            <CardDescription>Based on your input, the AI suggested the following configuration for testing:</CardDescription>
+            <CardDescription>Based on your input, the AI suggested the following configuration:</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
              <div>
@@ -324,20 +347,46 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
                      </Badge>
                  </div>
              </div>
-             {isGenerating && ( // Show spinner only when processing this suggestion
+             {generationState === GenerationState.GENERATING && ( // Show spinner only when processing this suggestion
                  <div className="flex items-center text-muted-foreground pt-2">
                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                      <span>Attempting to code, debug, and backtest this suggestion...</span>
                  </div>
              )}
-             {!isGenerating && ( // Show message only after processing is done
+              {/* Show error if generation failed *after* suggestion */}
+             {generationState === GenerationState.IDLE && generationError && suggestedConfig && (
+                  <div className="flex items-center text-destructive pt-2">
+                     <AlertTriangle className="mr-2 h-4 w-4" />
+                     <span>{generationError}</span>
+                 </div>
+             )}
+             {/* Show generic message after completion if no specific error shown */}
+             {generationState === GenerationState.IDLE && !generationError && suggestedConfig && (
                  <p className="text-xs text-muted-foreground pt-2">
-                     The agent attempted to generate and backtest this configuration. Check notifications and the strategy list for results.
+                     Processing complete. Check notifications and the strategy list for results.
                  </p>
             )}
           </CardContent>
         </Card>
       )}
+        {/* Show initial error if suggestion itself failed */}
+        {generationState === GenerationState.IDLE && generationError && !suggestedConfig && (
+            <div className="flex items-center text-destructive pt-4 mt-4 border-t">
+                <AlertTriangle className="mr-2 h-5 w-5" />
+                <span>{generationError}</span>
+            </div>
+        )}
+
+        {/* Add animation utility if not already present */}
+        <style jsx global>{`
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        `}</style>
       </>
   );
 }
