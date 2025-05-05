@@ -33,38 +33,51 @@ export default function CliPage() {
     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500)); // Simulate async processing
     setIsProcessing(false);
 
+    const trimmedCommand = command.trim();
+    const lowerCaseCommand = trimmedCommand.toLowerCase();
     let responseText = '';
     let responseType: OutputLine['type'] = 'output';
 
-    switch (command.trim().toLowerCase()) {
-      case 'help':
-        responseText = `Available commands:\n  start <strategy_id>   - Start a strategy\n  stop <strategy_id>    - Stop a strategy\n  status [strategy_id] - Show status\n  list strategies     - List all strategies\n  list agents         - List all agents\n  config <key> [value] - View or set config\n  clear               - Clear the console\n  help                - Show this help message`;
-        break;
-      case 'list strategies':
-        responseText = `Strategies:\n  strat-001: Momentum Burst (Active)\n  strat-002: Mean Reversion Scalper (Inactive)\n  strat-003: AI Trend Follower (Active)\n  strat-004: Arbitrage Finder (Debugging)`;
-        break;
-       case 'list agents':
-         responseText = `Agents:\n  agent-001: Strategy Generator (Running)\n  agent-002: Execution Agent - Momentum (Running)\n  agent-003: Market Scanner (Running)\n  agent-004: Execution Agent - AI Trend (Idle)\n  agent-005: Risk Management Agent (Running)`;
-         break;
-      case 'status':
-         responseText = `Platform Status: Running\nActive Strategies: 2\nAgents Running: 4\nErrors: 4`;
-         break;
-       case var cmd if cmd.startsWith('start '):
-         responseText = `Attempting to start strategy "${cmd.substring(6)}"... Success.`;
-         break;
-       case var cmd if cmd.startsWith('stop '):
-         responseText = `Attempting to stop strategy "${cmd.substring(5)}"... Success.`;
-         break;
-      case 'clear':
-         setOutput([{ id: Date.now(), text: 'Console cleared.', type: 'system' }]);
-         return { id: Date.now(), text: '', type: 'system' }; // Return empty to avoid duplicate clear message
-      case '':
-        responseText = ''; // No output for empty command
-        break;
-      default:
-        responseText = `Error: Command not found: "${command}"`;
-        responseType = 'error';
-        break;
+    // Handle commands with arguments first
+    if (lowerCaseCommand.startsWith('start ')) {
+      const strategyId = trimmedCommand.substring(6).trim(); // Get the ID after 'start '
+      responseText = strategyId
+        ? `Attempting to start strategy "${strategyId}"... Success.`
+        : `Error: Missing strategy ID for 'start' command.`;
+      responseType = strategyId ? 'output' : 'error';
+    } else if (lowerCaseCommand.startsWith('stop ')) {
+      const strategyId = trimmedCommand.substring(5).trim(); // Get the ID after 'stop '
+      responseText = strategyId
+        ? `Attempting to stop strategy "${strategyId}"... Success.`
+        : `Error: Missing strategy ID for 'stop' command.`;
+       responseType = strategyId ? 'output' : 'error';
+    } else {
+      // Handle exact match commands
+      switch (lowerCaseCommand) {
+        case 'help':
+          responseText = `Available commands:\n  start <strategy_id>   - Start a strategy\n  stop <strategy_id>    - Stop a strategy\n  status [strategy_id] - Show status\n  list strategies     - List all strategies\n  list agents         - List all agents\n  config <key> [value] - View or set config\n  clear               - Clear the console\n  help                - Show this help message`;
+          break;
+        case 'list strategies':
+          responseText = `Strategies:\n  strat-001: Momentum Burst (Active)\n  strat-002: Mean Reversion Scalper (Inactive)\n  strat-003: AI Trend Follower (Active)\n  strat-004: Arbitrage Finder (Debugging)`;
+          break;
+        case 'list agents':
+          responseText = `Agents:\n  agent-001: Strategy Generator (Running)\n  agent-002: Execution Agent - Momentum (Running)\n  agent-003: Market Scanner (Running)\n  agent-004: Execution Agent - AI Trend (Idle)\n  agent-005: Risk Management Agent (Running)`;
+          break;
+        case 'status':
+          responseText = `Platform Status: Running\nActive Strategies: 2\nAgents Running: 4\nErrors: 4`;
+          break;
+        case 'clear':
+          setOutput([{ id: Date.now(), text: 'Console cleared.', type: 'system' }]);
+          // Return immediately as setOutput handles the message
+          return { id: Date.now(), text: '', type: 'system' };
+        case '':
+          responseText = ''; // No output for empty command
+          break;
+        default:
+          responseText = `Error: Command not found: "${command}"`;
+          responseType = 'error';
+          break;
+      }
     }
     return { id: Date.now(), text: responseText, type: responseType };
   };
@@ -83,7 +96,8 @@ export default function CliPage() {
 
     // Process command and add output
     const responseLine = await processCommand(command);
-    if (responseLine.text) { // Only add if there's text (handles 'clear')
+    // Only add response if it has text (handles 'clear' command correctly)
+    if (responseLine.text) {
         setOutput(prev => [...prev, responseLine]);
     }
 
@@ -123,6 +137,7 @@ export default function CliPage() {
                  {'text-destructive': line.type === 'error'},
               )}>
                  {line.type === 'input' && <span className="text-accent mr-1"><ChevronRight className="inline h-4 w-4" /></span>}
+                 {/* Use pre-wrap to preserve whitespace like newlines from 'help' command */}
                  <span className="whitespace-pre-wrap break-words">{line.text}</span>
               </div>
             ))}
