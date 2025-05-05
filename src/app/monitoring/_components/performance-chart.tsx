@@ -16,10 +16,11 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart"
+import type { PerformanceDataPoint } from '@/services/monitoring-service'; // Import type
 
 
 interface PerformanceChartProps {
-  data: Array<{ date: string; portfolioValue: number; profit: number }>;
+  data: PerformanceDataPoint[]; // Use the imported type
 }
 
 const chartConfig = {
@@ -35,70 +36,97 @@ const chartConfig = {
 
 
 export function PerformanceChart({ data }: PerformanceChartProps) {
+
+   // Find min/max for dynamic Y-axis domains with padding
+    const values = data.map(d => d.portfolioValue);
+    const profits = data.map(d => d.profit);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const minProfit = Math.min(...profits);
+    const maxProfit = Math.max(...profits);
+
+    const valuePadding = (maxValue - minValue) * 0.1 || 1000; // Add 10% padding or 1000
+    const profitPadding = (maxProfit - minProfit) * 0.1 || 100; // Add 10% padding or 100
+
+
   return (
      <ChartContainer config={chartConfig} className="aspect-auto h-[300px] w-full">
-      <RechartsLineChart
-        accessibilityLayer
-        data={data}
-        margin={{
-          left: 12,
-          right: 12,
-           top: 12,
-           bottom: 12,
-        }}
-      >
-        <CartesianGrid vertical={false} strokeDasharray="3 3" />
-        <XAxis
-          dataKey="date"
-          tickLine={false}
-          axisLine={false}
-          tickMargin={8}
-          tickFormatter={(value) => {
-             // Format date for better readability if needed
-             const date = new Date(value);
-             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          }}
-        />
-         <YAxis
-            yAxisId="left"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            tickFormatter={(value) => `$${value / 1000}k`} // Format as thousands
-            domain={['dataMin - 1000', 'dataMax + 1000']} // Add some padding
-          />
-          <YAxis
-             yAxisId="right"
-             orientation="right"
-             tickLine={false}
-             axisLine={false}
-             tickMargin={8}
-             tickFormatter={(value) => `$${value}`}
-             domain={['auto', 'auto']} // Auto domain for profit
-           />
-        <ChartTooltip
-          cursor={true} // Show cursor line
-          content={<ChartTooltipContent indicator="dot" hideLabel />} // Use dot indicator
-        />
-        <Line
-          dataKey="portfolioValue"
-          type="monotone"
-          stroke="var(--color-portfolioValue)"
-          strokeWidth={2}
-          dot={false} // Hide dots on line for cleaner look
-          yAxisId="left"
-          name="Portfolio Value ($)"
-        />
-         <Line
-            dataKey="profit"
-            type="monotone"
-            stroke="var(--color-profit)"
-            strokeWidth={2}
-            dot={false}
-            yAxisId="right"
-            name="Cumulative Profit ($)"
-          />
-      </RechartsLineChart>
+      {data.length > 0 ? (
+          <RechartsLineChart
+            accessibilityLayer
+            data={data}
+            margin={{
+              left: 12,
+              right: 12,
+              top: 12,
+              bottom: 12,
+            }}
+          >
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="date"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              tickFormatter={(value) => {
+                 // Format date for better readability if needed
+                 try {
+                    const date = new Date(value);
+                     if (isNaN(date.getTime())) return value; // Fallback
+                     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                 } catch {
+                     return value; // Fallback
+                 }
+              }}
+               // Ensure ticks don't overlap on smaller screens
+               interval="preserveStartEnd"
+               minTickGap={40}
+            />
+            <YAxis
+                yAxisId="left"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tickFormatter={(value) => `$${(value / 1000).toFixed(1)}k`} // Format as thousands
+                domain={[Math.max(0, minValue - valuePadding), maxValue + valuePadding]} // Dynamic domain with padding, floor at 0
+              />
+              <YAxis
+                 yAxisId="right"
+                 orientation="right"
+                 tickLine={false}
+                 axisLine={false}
+                 tickMargin={8}
+                 tickFormatter={(value) => `$${value.toLocaleString()}`} // Format with commas
+                 domain={[minProfit - profitPadding, maxProfit + profitPadding]} // Dynamic domain for profit
+               />
+            <ChartTooltip
+              cursor={true} // Show cursor line
+              content={<ChartTooltipContent indicator="dot" hideLabel />} // Use dot indicator
+            />
+            <Line
+              dataKey="portfolioValue"
+              type="monotone"
+              stroke="var(--color-portfolioValue)"
+              strokeWidth={2}
+              dot={false} // Hide dots on line for cleaner look
+              yAxisId="left"
+              name="Portfolio Value ($)" // Ensure name matches config if used elsewhere
+            />
+             <Line
+                dataKey="profit"
+                type="monotone"
+                stroke="var(--color-profit)"
+                strokeWidth={2}
+                dot={false}
+                yAxisId="right"
+                name="Cumulative Profit ($)" // Ensure name matches config if used elsewhere
+              />
+          </RechartsLineChart>
+       ) : (
+           <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+               No performance data available.
+           </div>
+       )}
     </ChartContainer>
   );
 }

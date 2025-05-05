@@ -1,38 +1,59 @@
-'use client'; // Add 'use client' for onClick handlers and toast
+'use client';
 
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bot, PlusCircle, Activity, Settings, FileCode } from "lucide-react";
+import { Bot, PlusCircle, Activity, Settings, FileCode, Loader2, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from '@/lib/utils';
-import { useToast } from "@/hooks/use-toast"; // Import useToast
-
-// Mock agent data
-const agents = [
-  { id: 'agent-001', name: 'Strategy Generator', type: 'Strategy Coding Agent', status: 'Running', description: 'Automatically codes, debugs, and backtests new strategies.', tasksCompleted: 15, errors: 1 },
-  { id: 'agent-002', name: 'Execution Agent - Momentum', type: 'Execution Agent', status: 'Running', description: 'Executes trades for the Momentum Burst strategy.', tasksCompleted: 128, errors: 0 },
-  { id: 'agent-003', name: 'Market Scanner', type: 'Data Agent', status: 'Running', description: 'Monitors market data for potential signals.', tasksCompleted: 1532, errors: 3 },
-  { id: 'agent-004', name: 'Execution Agent - AI Trend', type: 'Execution Agent', status: 'Idle', description: 'Executes trades for the AI Trend Follower strategy.', tasksCompleted: 95, errors: 0 },
-   { id: 'agent-005', name: 'Risk Management Agent', type: 'Analysis Agent', status: 'Running', description: 'Monitors overall portfolio risk.', tasksCompleted: 45, errors: 0 },
-];
-
+import { useToast } from "@/hooks/use-toast";
+import { getAgents, Agent } from '@/services/agents-service'; // Import the service
 
 export default function AgentsPage() {
-    const { toast } = useToast(); // Initialize toast
+    const { toast } = useToast();
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function loadAgents() {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const fetchedAgents = await getAgents();
+                setAgents(fetchedAgents);
+            } catch (err) {
+                console.error("Failed to fetch agents:", err);
+                setError("Failed to load agent data. Please try again later.");
+                toast({
+                    title: "Error",
+                    description: "Could not fetch agent list.",
+                    variant: "destructive",
+                });
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        loadAgents();
+     }, [toast]); // Added toast dependency
+
 
     const handleAddAgent = () => {
-        toast({ title: "Action Required", description: "Implement 'Add New Agent' functionality." });
+        // TODO: Implement logic to show a form/modal for adding a new agent
+        toast({ title: "Feature Not Implemented", description: "Functionality to add a new agent is not yet available." });
     };
 
     const handleViewLogs = (agentId: string) => {
-        toast({ title: "Action Required", description: `Implement log viewer for agent ${agentId}.` });
+        // TODO: Implement navigation or modal display for agent logs
+        toast({ title: "Feature Not Implemented", description: `Log viewing for agent ${agentId} is not yet available.` });
     };
 
     const handleConfigureAgent = (agentId: string) => {
-        toast({ title: "Action Required", description: `Implement configuration for agent ${agentId}.` });
+         // TODO: Implement navigation or modal display for agent configuration
+        toast({ title: "Feature Not Implemented", description: `Configuration for agent ${agentId} is not yet available.` });
     };
 
-    const getStatusBadgeVariant = (status: string) => {
+    const getStatusBadgeVariant = (status: Agent['status']) => {
         switch (status) {
         case 'Running':
             return 'default'; // Primary color
@@ -40,24 +61,38 @@ export default function AgentsPage() {
             return 'secondary';
         case 'Error':
             return 'destructive';
+         case 'Stopped': // Handle new status
+             return 'outline';
         default:
             return 'outline';
         }
     };
 
-  return (
-    <div className="space-y-6">
-       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-           <div>
-            <CardTitle>Manage Agents</CardTitle>
-            <CardDescription>Configure and monitor your trading agents.</CardDescription>
-          </div>
-            <Button size="sm" onClick={handleAddAgent}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Agent
-            </Button>
-        </CardHeader>
-         <CardContent>
+    const renderContent = () => {
+        if (isLoading) {
+            return (
+                 <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground">Loading agents...</span>
+                 </div>
+            );
+        }
+
+        if (error) {
+            return (
+                <div className="flex flex-col items-center justify-center py-10 text-destructive">
+                     <AlertTriangle className="h-8 w-8 mb-2" />
+                    <p>{error}</p>
+                     <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Retry</Button>
+                 </div>
+            );
+        }
+
+        if (agents.length === 0) {
+             return <p className="text-center text-muted-foreground py-10">No agents found.</p>;
+        }
+
+        return (
              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                  {agents.map((agent) => (
                      <Card key={agent.id}>
@@ -93,6 +128,24 @@ export default function AgentsPage() {
                      </Card>
                  ))}
              </div>
+         );
+    };
+
+
+  return (
+    <div className="space-y-6">
+       <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+           <div>
+            <CardTitle>Manage Agents</CardTitle>
+            <CardDescription>Configure and monitor your trading agents.</CardDescription>
+          </div>
+            <Button size="sm" onClick={handleAddAgent} disabled={isLoading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Agent
+            </Button>
+        </CardHeader>
+         <CardContent>
+             {renderContent()}
          </CardContent>
       </Card>
     </div>
