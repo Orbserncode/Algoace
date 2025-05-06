@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Bot, PlusCircle, Activity, Settings, FileCode, Loader2, AlertTriangle, Power, PowerOff, Trash2, Play, Pause } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from '@/lib/utils';
@@ -298,5 +298,3 @@ export default function AgentsPage() {
      </>
   );
 }
-
-    
