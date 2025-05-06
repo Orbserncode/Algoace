@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import * as RechartsPrimitive from "recharts"
+import * as RechartsPrimitive from "recharts" // Keep this as the main import
+import { Candlestick } from "recharts" // Specifically import Candlestick if needed separately
 
 import { cn } from "@/lib/utils"
 
@@ -240,7 +241,8 @@ const ChartTooltipContent = React.forwardRef<
                       </div>
                       {item.value && (
                         <span className="font-mono font-medium tabular-nums text-foreground">
-                          {item.value.toLocaleString()}
+                          {/* Handle array value for Candlestick */}
+                          {Array.isArray(item.value) ? `O: ${item.value[0]} H: ${item.value[1]} L: ${item.value[2]} C: ${item.value[3]}` : item.value.toLocaleString()}
                         </span>
                       )}
                     </div>
@@ -362,4 +364,5 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
+  Candlestick, // Export Candlestick from Recharts
 }

@@ -22,6 +22,7 @@ import { runBacktest, getBacktestResults, BacktestResults, getBacktestJobStatus 
 import { summarizeBacktestResults } from '@/ai/flows/summarize-backtest-results';
 import { PerformanceChart } from '@/app/monitoring/_components/performance-chart'; // Reuse chart
 import { Skeleton } from "@/components/ui/skeleton";
+import { AdvancedVisualizations } from './_components/advanced-visualizations'; // Import advanced charts
 
 // Validation Schema
 const backtestFormSchema = z.object({
@@ -64,6 +65,27 @@ const formatValue = (value: number | undefined, type: 'currency' | 'percentage' 
     }
 };
 
+// Prepare data for candlestick (needs OHLC structure)
+// This is a placeholder - actual OHLC data needs to come from the backtesting service
+const transformEquityToCandlestick = (equityCurve: BacktestResults['equityCurve']) => {
+    // Mock OHLC data based on portfolioValue - replace with real data
+    return equityCurve.map((point, index, arr) => {
+        const prevClose = index > 0 ? arr[index - 1].portfolioValue : point.portfolioValue;
+        const open = prevClose; // Simple mock: open is previous close
+        const close = point.portfolioValue;
+        const high = Math.max(open, close) * (1 + Math.random() * 0.01); // Add small random variance
+        const low = Math.min(open, close) * (1 - Math.random() * 0.01); // Add small random variance
+        return {
+            date: point.date,
+            open: parseFloat(open.toFixed(2)),
+            high: parseFloat(high.toFixed(2)),
+            low: parseFloat(low.toFixed(2)),
+            close: parseFloat(close.toFixed(2)),
+        };
+    });
+}
+
+
 export default function BacktestingPage() {
     const { toast } = useToast();
     const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -93,9 +115,10 @@ export default function BacktestingPage() {
         async function loadInitialData() {
             setIsInitialDataLoading(true); // Start loading
             try {
+                // Fetch only non-archived strategies for the dropdown
                 const [fetchedStrategies, fetchedAssets] = await Promise.all([
-                    getStrategies(),
-                    getAvailableAssets() // Fetch from mock broker service
+                    getStrategies(false), // Fetch non-archived
+                    getAvailableAssets()
                 ]);
                 setStrategies(fetchedStrategies);
                 setAssets(fetchedAssets);
@@ -121,12 +144,25 @@ export default function BacktestingPage() {
                     if (status === 'COMPLETED') {
                         setBacktestState(BacktestState.FETCHING);
                         clearInterval(intervalId!);
-                        fetchResults(form.getValues("strategyId")); // Fetch results after completion
+                        // Use strategy ID from form state when fetching results after completion
+                        const currentStrategyId = form.getValues("strategyId");
+                        if (currentStrategyId) {
+                            fetchResults(currentStrategyId);
+                        } else {
+                             console.error("Strategy ID missing when trying to fetch results.");
+                             setError("Could not fetch results: Strategy ID missing.");
+                             setBacktestState(BacktestState.ERROR);
+                        }
                     } else if (status === 'FAILED') {
                         setBacktestState(BacktestState.ERROR);
                         setError(`Backtest job ${jobId} failed.`);
-                        toast({ title: "Backtest Failed", description: "The backtest process encountered an error.", variant: "destructive"});
+                        toast({ title: "Backtest Failed", description: `The backtest process encountered an error (Job ID: ${jobId}).`, variant: "destructive"});
                         clearInterval(intervalId!);
+                         // Fetch results even on failure, as they might contain error logs
+                         const currentStrategyId = form.getValues("strategyId");
+                         if (currentStrategyId) {
+                             fetchResults(currentStrategyId, true); // Pass flag indicating expected failure
+                         }
                     }
                     // Keep polling if 'PENDING' or 'RUNNING'
                 } catch (err) {
@@ -143,22 +179,28 @@ export default function BacktestingPage() {
             if (intervalId) clearInterval(intervalId);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backtestState, jobId, toast]); // Add form dependency if needed
+    }, [backtestState, jobId, toast]); // Add form dependency
 
 
-    const fetchResults = async (strategyId: string) => {
+    const fetchResults = async (strategyId: string, expectFailure: boolean = false) => {
          try {
              console.log(`Fetching backtest results for strategy: ${strategyId}`);
              const results = await getBacktestResults(strategyId);
              setBacktestResults(results);
              console.log("Backtest results fetched:", results);
              setBacktestState(BacktestState.COMPLETE); // Set state to complete after fetching
-             toast({ title: "Backtest Complete", description: "Results loaded successfully."});
+             // Adjust toast message based on expected outcome
+              if (!expectFailure) {
+                  toast({ title: "Backtest Complete", description: "Results loaded successfully."});
+              } else {
+                  toast({ title: "Backtest Failed", description: "Loaded results/logs from failed backtest.", variant: "destructive" });
+              }
          } catch (err) {
              console.error("Failed to fetch backtest results:", err);
-             setError(`Failed to load backtest results. ${err instanceof Error ? err.message : 'Please try again.'}`);
+             const errorMsg = `Failed to load backtest results. ${err instanceof Error ? err.message : 'Please try again.'}`;
+             setError(errorMsg);
              setBacktestState(BacktestState.ERROR);
-             toast({ title: "Error Loading Results", description: error || 'Unknown Error', variant: "destructive" }); // Ensure error is a string
+             toast({ title: "Error Loading Results", description: errorMsg, variant: "destructive" });
          }
     }
 
@@ -187,9 +229,6 @@ export default function BacktestingPage() {
             toast({ title: "Backtest Started", description: `Job ${newJobId} is running. Results will appear when complete.`});
 
             // Polling will handle fetching results once complete
-            // For simpler implementation without polling, could fetch directly after runBacktest if it waits:
-            // setBacktestState(BacktestState.FETCHING);
-            // await fetchResults(values.strategyId);
 
         } catch (err) {
             console.error("Failed to start backtest:", err);
@@ -203,12 +242,17 @@ export default function BacktestingPage() {
       const handleGenerateSummary = async () => {
         if (!backtestResults || !strategies.length) return;
 
+        // Find strategy in the unfiltered list (might be archived)
         const strategy = strategies.find(s => s.id === backtestResults.strategyId);
-        if (!strategy) return;
+        if (!strategy) {
+             toast({ title: "Strategy Not Found", description: "Could not find details for the strategy used in this backtest.", variant: "destructive" });
+             return;
+         };
+
 
         setBacktestState(BacktestState.SUMMARIZING);
         setAiSummary(null);
-        setError(null);
+        setError(null); // Clear previous errors specifically for the summary section
 
         try {
             console.log("Generating AI summary for backtest results...");
@@ -227,8 +271,8 @@ export default function BacktestingPage() {
         } catch (err) {
             console.error("Failed to generate AI summary:", err);
             const summaryError = `Failed to generate AI summary. ${err instanceof Error ? err.message : 'Please try again.'}`;
-            setError(summaryError); // Show error in the results section
-            setBacktestState(BacktestState.COMPLETE); // Still show results, but with error message
+            setError(summaryError); // Show error in the results section, specifically for summary
+            setBacktestState(BacktestState.COMPLETE); // Still show results, but with error message in summary section
             toast({ title: "AI Summary Error", description: summaryError, variant: "destructive" });
         }
    };
@@ -256,8 +300,9 @@ export default function BacktestingPage() {
                                     </FormControl>
                                     <SelectContent>
                                         {isInitialDataLoading && <SelectItem value="loading" disabled>Loading strategies...</SelectItem>}
-                                        {!isInitialDataLoading && strategies.length === 0 && <SelectItem value="no-strategies" disabled>No strategies available.</SelectItem>}
-                                        {!isInitialDataLoading && strategies.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        {!isInitialDataLoading && strategies.length === 0 && <SelectItem value="no-strategies" disabled>No active strategies available.</SelectItem>}
+                                        {/* Filter out Archived strategies from the dropdown */}
+                                        {!isInitialDataLoading && strategies.filter(s => s.status !== 'Archived').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -412,11 +457,12 @@ export default function BacktestingPage() {
                         )}
                     />
                 </div>
-                <Button type="submit" disabled={isLoading || backtestState !== BacktestState.IDLE && backtestState !== BacktestState.COMPLETE && backtestState !== BacktestState.ERROR} className="w-full md:w-auto">
+                 {/* Disable button during queuing, running, fetching */}
+                <Button type="submit" disabled={backtestState !== BacktestState.IDLE && backtestState !== BacktestState.COMPLETE && backtestState !== BacktestState.ERROR} className="w-full md:w-auto">
                     {backtestState === BacktestState.QUEUING ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Queuing...
+                            Queuing Backtest...
                         </>
                      ) : backtestState === BacktestState.RUNNING ? (
                          <>
@@ -432,6 +478,13 @@ export default function BacktestingPage() {
                         "Run Backtest"
                     )}
                 </Button>
+                 {/* Display general error if form submission or polling fails */}
+                 {backtestState === BacktestState.ERROR && error && !backtestResults && (
+                    <div className="text-destructive text-sm mt-2 flex items-center">
+                        <AlertTriangle className="mr-1 h-4 w-4" />
+                        {error}
+                    </div>
+                 )}
             </form>
         </Form>
     );
@@ -449,8 +502,8 @@ export default function BacktestingPage() {
             );
          }
 
-        // Show error message if state is ERROR
-         if (backtestState === BacktestState.ERROR && error) {
+        // Show global error message if state is ERROR and results haven't loaded
+         if (backtestState === BacktestState.ERROR && error && !backtestResults) {
             return (
                 <div className="flex flex-col items-center justify-center h-64 text-destructive space-y-4">
                     <AlertTriangle className="h-8 w-8" />
@@ -460,9 +513,12 @@ export default function BacktestingPage() {
             );
         }
 
-        // Show results if state is COMPLETE and results exist
-         if (backtestState === BacktestState.COMPLETE && backtestResults) {
+        // Show results if state is COMPLETE (or ERROR *after* results loaded) and results exist
+         if ((backtestState === BacktestState.COMPLETE || backtestState === BacktestState.ERROR) && backtestResults) {
             const metrics = backtestResults.summaryMetrics;
+            // Transform equity data for candlestick (placeholder transformation)
+            const candlestickData = transformEquityToCandlestick(backtestResults.equityCurve);
+
             return (
                  <div className="space-y-6 mt-6 animate-fade-in">
                      {/* Performance Chart */}
@@ -519,6 +575,19 @@ export default function BacktestingPage() {
                              {metrics.endDate && <div><dt className="text-muted-foreground">End Date</dt><dd>{metrics.endDate}</dd></div>}
                              {metrics.sharpeRatio && <div><dt className="text-muted-foreground">Sharpe Ratio</dt><dd>{metrics.sharpeRatio.toFixed(2)}</dd></div>}
                          </CardContent>
+                         {/* Display log output if available (e.g., on failure) */}
+                          {backtestResults.logOutput && (
+                            <CardFooter>
+                                <details className="w-full">
+                                     <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">View Backtest Log</summary>
+                                     <ScrollArea className="mt-2 h-32 w-full rounded-md border bg-muted/50 p-2">
+                                         <pre className="text-xs whitespace-pre-wrap break-words">
+                                             <code>{backtestResults.logOutput}</code>
+                                         </pre>
+                                     </ScrollArea>
+                                </details>
+                            </CardFooter>
+                         )}
                      </Card>
 
                      {/* AI Summary Section */}
@@ -546,16 +615,18 @@ export default function BacktestingPage() {
                          </CardHeader>
                          <CardContent>
                               {/* Show error specific to summary generation */}
-                             {error && backtestState === BacktestState.COMPLETE && ( // Only show summary error here
-                                  <p className="text-sm text-destructive">{error}</p>
+                             {error && backtestState === BacktestState.COMPLETE && ( // Only show summary error here if results are loaded but summary failed
+                                  <p className="text-sm text-destructive flex items-center">
+                                      <AlertTriangle className="mr-1 h-4 w-4" /> {error}
+                                  </p>
                               )}
-                             {!error && aiSummary && (
+                             {!error && aiSummary && ( // Show summary if no error for summary and it exists
                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{aiSummary}</p>
                              )}
-                             {!error && !aiSummary && backtestState !== BacktestState.SUMMARIZING && ( // Don't show if currently summarizing
+                             {!error && !aiSummary && backtestState !== BacktestState.SUMMARIZING && ( // Prompt to generate if no error and no summary
                                  <p className="text-sm text-muted-foreground">Click "Generate Summary" for an AI interpretation.</p>
                               )}
-                              {backtestState === BacktestState.SUMMARIZING && (
+                              {backtestState === BacktestState.SUMMARIZING && ( // Show loading state while summarizing
                                  <div className="flex items-center text-muted-foreground">
                                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                       <span>Generating AI summary...</span>
@@ -563,7 +634,14 @@ export default function BacktestingPage() {
                               )}
                          </CardContent>
                      </Card>
-                     {/* Optionally: Add Trade Log Table/Details */}
+
+                     {/* Advanced Visualizations */}
+                    <AdvancedVisualizations
+                        trades={backtestResults.trades || []}
+                        isLoading={backtestState === BacktestState.FETCHING}
+                        equityCurve={candlestickData} // Pass transformed data
+                     />
+
                  </div>
             );
          }
@@ -595,14 +673,14 @@ export default function BacktestingPage() {
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                             <span className="ml-2 text-muted-foreground">Loading configuration...</span>
                          </div>
-                    ) : error && strategies.length === 0 && assets.length === 0 ? ( // Show error only if data failed to load
+                     ) : error && strategies.length === 0 && assets.length === 0 ? ( // Show error only if initial data failed to load completely
                         <div className="flex flex-col items-center justify-center py-10 text-destructive">
                             <AlertTriangle className="h-8 w-8 mb-2" />
                             <p>{error}</p>
                             <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Retry</Button>
                         </div>
                      ) : (
-                        renderForm() // Render the form once data is loaded or if there's no error
+                        renderForm() // Render the form once data is loaded or if there's no critical error
                     )}
                 </CardContent>
             </Card>
@@ -617,7 +695,8 @@ export default function BacktestingPage() {
                          {backtestState === BacktestState.FETCHING && 'Fetching completed backtest results...'}
                           {backtestState === BacktestState.SUMMARIZING && 'Generating AI summary...'}
                          {backtestState === BacktestState.COMPLETE && backtestResults && `Showing results for ${selectedStrategyName} on ${backtestResults.summaryMetrics.symbol || 'asset'}.`}
-                         {backtestState === BacktestState.ERROR && 'An error occurred during the backtest process.'}
+                         {backtestState === BacktestState.ERROR && error && `An error occurred: ${error}`}
+                         {backtestState === BacktestState.ERROR && !error && 'An unknown error occurred during the backtest process.'}
                      </CardDescription>
                  </CardHeader>
                  <CardContent>
@@ -634,6 +713,12 @@ export default function BacktestingPage() {
             .animate-fade-in {
                 animation: fadeIn 0.5s ease-out forwards;
             }
+            `}</style>
+            {/* Add ScrollArea style if needed */}
+            <style jsx global>{`
+             .scroll-area-with-scrollbar {
+                /* Add specific styles if needed, e.g., max-height */
+              }
             `}</style>
         </div>
     );

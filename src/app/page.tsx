@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileCode, LineChart, Bot, Terminal, Settings } from "lucide-react";
+import { FileCode, LineChart, Bot, Terminal, Settings, History } from "lucide-react"; // Added History icon
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -20,10 +20,18 @@ export default function DashboardPage() {
 
       <FeatureCard
         title="Strategies"
-        description="Configure, manage, and backtest trading strategies."
+        description="Configure, manage, and view trading strategies."
         icon={<FileCode className="h-6 w-6" />}
         link="/strategies"
         linkText="Manage Strategies"
+      />
+
+       <FeatureCard
+        title="Backtesting"
+        description="Test strategy performance on historical data."
+        icon={<History className="h-6 w-6" />} // Added Backtesting card
+        link="/backtesting"
+        linkText="Run Backtests"
       />
 
       <FeatureCard

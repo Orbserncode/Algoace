@@ -4,26 +4,37 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, AlertTriangle } from "lucide-react";
+import { PlusCircle, Loader2, AlertTriangle, Archive, EyeOff } from "lucide-react"; // Added Archive, EyeOff
 import { StrategyTable } from './_components/strategy-table';
 import { AutomatedGenerationForm } from './_components/automated-generation-form';
 import { AddStrategyDialog } from './_components/add-strategy-dialog';
 import { useToast } from "@/hooks/use-toast";
 import { getStrategies, Strategy } from '@/services/strategies-service';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
+import { Label } from '@/components/ui/label'; // Import Label
 
 export default function StrategiesPage() {
     const { toast } = useToast();
-    const [strategies, setStrategies] = useState<Strategy[]>([]);
+    const [allStrategies, setAllStrategies] = useState<Strategy[]>([]); // Store all including archived
+    const [filteredStrategies, setFilteredStrategies] = useState<Strategy[]>([]); // Displayed list
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
 
     const loadStrategies = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const fetchedStrategies = await getStrategies();
-            setStrategies(fetchedStrategies);
+            // Always fetch all strategies now
+            const fetchedStrategies = await getStrategies(true); // Pass true to include archived
+            setAllStrategies(fetchedStrategies);
+            // Apply filter based on current state
+            setFilteredStrategies(
+                showArchived
+                    ? fetchedStrategies
+                    : fetchedStrategies.filter(s => s.status !== 'Archived')
+            );
         } catch (err) {
             console.error("Failed to fetch strategies:", err);
             setError("Failed to load strategies. Please try again later.");
@@ -35,35 +46,47 @@ export default function StrategiesPage() {
         } finally {
             setIsLoading(false);
         }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast]);
+    }, [toast, showArchived]); // Depend on showArchived
 
     useEffect(() => {
         loadStrategies();
-    }, [loadStrategies]);
+    }, [loadStrategies]); // Load when component mounts or loadStrategies changes
+
+    // Filter strategies whenever showArchived changes
+    useEffect(() => {
+         setFilteredStrategies(
+            showArchived
+                ? allStrategies
+                : allStrategies.filter(s => s.status !== 'Archived')
+         );
+    }, [showArchived, allStrategies]);
 
     const handleAddNewStrategy = () => {
         setIsAddDialogOpen(true);
     };
 
+    // Handles both updates and archiving (which is just a status update)
     const handleStrategyUpdate = useCallback((updatedStrategy: Strategy) => {
-        setStrategies(prevStrategies =>
+        setAllStrategies(prevStrategies =>
             prevStrategies.map(s => s.id === updatedStrategy.id ? updatedStrategy : s)
         );
+         // Re-filtering will happen automatically due to the useEffect dependency on allStrategies
     }, []);
 
     const handleStrategyDelete = useCallback((deletedStrategyId: string) => {
-        setStrategies(prevStrategies =>
+        setAllStrategies(prevStrategies =>
             prevStrategies.filter(s => s.id !== deletedStrategyId)
         );
+         // Re-filtering will happen automatically
     }, []);
 
     const handleStrategyAdded = useCallback((newStrategy: Strategy) => {
-        setStrategies(prevStrategies => [newStrategy, ...prevStrategies]); // Add new strategy to the beginning
+        // Add to the main list, filter will apply automatically
+        setAllStrategies(prevStrategies => [newStrategy, ...prevStrategies]);
         setIsAddDialogOpen(false);
          toast({
             title: "Strategy Added",
-            description: `New strategy "${newStrategy.name}" added to the list.`,
+            description: `New strategy "${newStrategy.name}" added.`,
          });
     }, [toast]);
 
@@ -90,7 +113,7 @@ export default function StrategiesPage() {
 
         return (
             <StrategyTable
-                strategies={strategies}
+                strategies={filteredStrategies} // Pass the filtered list
                 onStrategyUpdate={handleStrategyUpdate}
                 onStrategyDelete={handleStrategyDelete}
              />
@@ -102,14 +125,28 @@ export default function StrategiesPage() {
       <div className="space-y-6">
         {/* Strategy List Card */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-4">
             <div>
               <CardTitle>Manage Strategies</CardTitle>
-              <CardDescription>View, manage, add, and backtest trading strategies.</CardDescription>
+              <CardDescription>View, manage, add, and interact with trading strategies.</CardDescription>
             </div>
-            <Button size="sm" onClick={handleAddNewStrategy} disabled={isLoading}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New Strategy
-            </Button>
+            <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 mr-2">
+                     <Checkbox
+                         id="show-archived"
+                         checked={showArchived}
+                         onCheckedChange={(checked) => setShowArchived(Boolean(checked))}
+                         disabled={isLoading}
+                     />
+                     <Label htmlFor="show-archived" className="text-sm text-muted-foreground flex items-center gap-1">
+                        {showArchived ? <EyeOff className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                        Show Archived
+                     </Label>
+                 </div>
+                 <Button size="sm" onClick={handleAddNewStrategy} disabled={isLoading}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Strategy
+                 </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {renderStrategyTable()}
@@ -134,8 +171,6 @@ export default function StrategiesPage() {
         onOpenChange={setIsAddDialogOpen}
         onStrategyAdded={handleStrategyAdded}
       />
-
-      {/* Backtest Result Dialog is now rendered within StrategyTable when needed */}
     </>
   );
 }

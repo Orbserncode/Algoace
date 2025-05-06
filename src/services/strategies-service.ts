@@ -12,7 +12,7 @@ export interface Strategy {
   id: string;
   name: string;
   description: string;
-  status: 'Active' | 'Inactive' | 'Debugging' | 'Backtesting';
+  status: 'Active' | 'Inactive' | 'Debugging' | 'Backtesting' | 'Archived'; // Added 'Archived'
   pnl: number; // Consider fetching PnL dynamically or storing recent PnL
   winRate: number; // Similarly, fetch/calculate win rate
   // Add other relevant fields: parameters, associated agent ID, creation date, source (AI-gen/Uploaded), filename etc.
@@ -27,7 +27,97 @@ let mockStrategies: Strategy[] = [
   { id: 'strat-002', name: 'Mean Reversion Scalper', description: 'Trades price deviations from the mean.', status: 'Inactive', pnl: -340.10, winRate: 48.9, source: 'Uploaded', fileName: 'mr_scalper_final.py' },
   { id: 'strat-003', name: 'AI Trend Follower', description: 'Uses ML to identify and follow trends.', status: 'Active', pnl: 3105.00, winRate: 72.1, source: 'AI-Generated' },
   { id: 'strat-004', name: 'Arbitrage Finder', description: 'Exploits price differences across exchanges.', status: 'Debugging', pnl: 0, winRate: 0, source: 'Uploaded', fileName: 'arb_bot_exp.py' },
+  { id: 'strat-005', name: 'Old Volatility Strategy', description: 'An older strategy no longer in use.', status: 'Archived', pnl: 50.15, winRate: 55.0, source: 'Uploaded', fileName: 'vol_breakout_old.py'}, // Example Archived
 ];
+
+// Mock code content for viewer - replace with actual fetching if backend exists
+const mockStrategyCode: Record<string, string> = {
+    'strat-001': `
+from lumibot.brokers import Alpaca
+from lumibot.backtesting import YahooDataBacktesting
+from lumibot.strategies.strategy import Strategy
+from lumibot.traders import Trader
+from datetime import datetime, timedelta
+from alpaca_trade_api import REST
+
+# Mock Momentum Burst Strategy
+class MomentumBurst(Strategy):
+    def initialize(self, symbol: str = "AAPL", cash_at_risk: float = .5):
+        self.symbol = symbol
+        self.sleep = "1D"
+        self.cash_at_risk = cash_at_risk
+        self.last_order = None
+
+    def on_trading_iteration(self):
+        entry_price = self.get_last_price(self.symbol)
+        # Simple momentum logic (replace with real logic)
+        momentum = entry_price / self.get_last_price(self.symbol, timedelta(days=5))
+        print(f"Momentum: {momentum}")
+
+        if momentum > 1.05: # If price increased significantly
+            order = self.create_order(
+                self.symbol,
+                10, # Quantity based on risk
+                "buy",
+                type="market"
+            )
+            self.submit_order(order)
+            self.last_order = "buy"
+        elif self.last_order == "buy" and momentum < 1.0: # Exit if momentum reverses
+             self.sell_all()
+             self.last_order = None
+`,
+    'strat-002': `
+from lumibot.strategies.strategy import Strategy
+# Mock Mean Reversion Scalper
+class MeanReversionScalper(Strategy):
+    def initialize(self, symbol: str = "MSFT", sma_period: int = 20):
+        self.symbol = symbol
+        self.sma_period = sma_period
+        self.sleep = "1H"
+
+    def on_trading_iteration(self):
+        # Replace with real mean reversion logic
+        price = self.get_last_price(self.symbol)
+        sma = self.get_historical_prices(self.symbol, self.sma_period, "day").df["close"].mean()
+        print(f"Price: {price}, SMA: {sma}")
+        # Basic logic: buy if below SMA, sell if above (needs refinement)
+`,
+    'strat-003': `# AI Generated Strategy - Placeholder Code Structure
+class AITrendFollower(Strategy):
+    # Parameters determined by AI
+    parameters = {'model_version': 'v2.1', 'confidence_threshold': 0.7}
+
+    def initialize(self):
+        self.symbol = "GOOGL"
+        self.sleep = "4H"
+        # Load model, etc.
+        print("Initializing AI Trend Follower...")
+
+    def on_trading_iteration(self):
+        # Get prediction from AI model
+        # Execute trade based on prediction and confidence
+        print("Running AI Trend Follower iteration...")
+`,
+    'strat-004': `# Debugging Arbitrage Finder - Placeholder
+class ArbitrageFinder(Strategy):
+    def initialize(self):
+        print("Initializing Arbitrage Finder (Debugging)...")
+        # Setup connections to multiple exchanges
+
+    def on_trading_iteration(self):
+        # Compare prices across exchanges
+        # Execute arbitrage if profitable opportunity found
+        print("Looking for arbitrage opportunities...")
+`,
+     'strat-005': `# Archived Volatility Strategy - Placeholder
+class VolatilityBreakout(Strategy):
+     # ... (old strategy code) ...
+     def initialize(self):
+          print("Initializing OLD Volatility Breakout...")
+`,
+};
+
 
 // Simulate potential API/DB errors
 const simulateError = (probability = 0.1) => {
@@ -37,17 +127,23 @@ const simulateError = (probability = 0.1) => {
 }
 
 /**
- * Fetches the list of all trading strategies.
+ * Fetches the list of all trading strategies (excluding Archived by default).
  * TODO: Replace with actual data fetching logic (e.g., from database).
+ * @param includeArchived Whether to include Archived strategies in the list. Defaults to false.
  * @returns A promise that resolves to an array of Strategy objects.
  */
-export async function getStrategies(): Promise<Strategy[]> {
-  console.log("Fetching strategies...");
+export async function getStrategies(includeArchived: boolean = false): Promise<Strategy[]> {
+  console.log(`Fetching strategies (includeArchived: ${includeArchived})...`);
   await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400)); // Slightly variable delay
   simulateError(0.05); // 5% chance of error on fetch
-  console.log("Fetched strategies:", mockStrategies.length);
-  // In a real app, fetch from database or config store
-  return [...mockStrategies]; // Return a copy to prevent direct mutation
+
+  const filteredStrategies = includeArchived
+    ? [...mockStrategies] // Return all if requested
+    : mockStrategies.filter(s => s.status !== 'Archived'); // Exclude archived by default
+
+  console.log("Fetched strategies:", filteredStrategies.length);
+  // In a real app, filter in the database query
+  return filteredStrategies;
 }
 
 /**
@@ -64,6 +160,28 @@ export async function getStrategyById(strategyId: string): Promise<Strategy | nu
     console.log(strategy ? `Found strategy: ${strategy.name}` : `Strategy ${strategyId} not found.`);
     return strategy || null;
 }
+
+/**
+ * Fetches the code content for a given strategy ID (mock implementation).
+ * In a real system, this would involve fetching the file content from storage
+ * based on the strategy's fileName or database record.
+ * @param strategyId The ID of the strategy.
+ * @returns A promise resolving to the code string, or null if not found/applicable.
+ */
+export async function getStrategyCode(strategyId: string): Promise<string | null> {
+    console.log(`Fetching code for strategy ID: ${strategyId}`);
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 100));
+    simulateError(0.03);
+
+    // In a real backend:
+    // 1. Fetch strategy metadata from DB using strategyId.
+    // 2. If it's an 'Uploaded' strategy with a fileName/path, read the file from storage (local, S3, GCS).
+    // 3. If it's 'AI-Generated', potentially reconstruct/fetch from where the generated code is stored.
+    // 4. Return the code content as a string.
+
+    return mockStrategyCode[strategyId] || null; // Return mock code or null
+}
+
 
 /**
  * Adds a new strategy (typically AI-generated or manually defined without file).
@@ -99,7 +217,7 @@ export async function addStrategyWithFile(newStrategyData: {
     name: string;
     description: string;
     fileName: string;
-    // status?: 'Active' | 'Inactive' | 'Debugging' | 'Backtesting'; // Optional status override
+    // status?: Strategy['status']; // Allow status override
     // fileContent?: string; // Could be sent if backend processes content directly
 }): Promise<Strategy> {
     console.log("Adding new strategy from file:", newStrategyData.fileName);
@@ -155,19 +273,19 @@ export async function updateStrategy(strategyId: string, updates: Partial<Omit<S
 }
 
 /**
- * Deletes a strategy.
+ * Deletes a strategy permanently.
  * TODO: Replace with actual data deletion logic (including associated files if applicable).
  * @param strategyId The ID of the strategy to delete.
  * @returns A promise that resolves to true if deleted, false otherwise.
  */
-export async function deleteStrategy(strategyId: string): Promise<boolean> {
-    console.log(`Deleting strategy ${strategyId}`);
+export async function deleteStrategyPermanently(strategyId: string): Promise<boolean> {
+    console.log(`Permanently deleting strategy ${strategyId}`);
     await new Promise(resolve => setTimeout(resolve, 350 + Math.random() * 150));
     simulateError(0.1); // Simulate potential deletion error
 
     // --- Backend actions needed here: ---
     // 1. Find strategy metadata in the database.
-    // 2. If it's an uploaded strategy, delete the associated file from storage.
+    // 2. If it's an 'Uploaded' strategy, delete the associated file from storage.
     // 3. Delete the strategy metadata record from the database.
     // -------------------------------------
 
@@ -175,12 +293,25 @@ export async function deleteStrategy(strategyId: string): Promise<boolean> {
     mockStrategies = mockStrategies.filter(s => s.id !== strategyId);
     const deleted = mockStrategies.length < initialLength;
     if (deleted) {
-        console.log(`Deleted strategy ${strategyId}`);
+        console.log(`Permanently deleted strategy ${strategyId}`);
     } else {
-         console.warn(`Strategy ${strategyId} not found for deletion.`);
+         console.warn(`Strategy ${strategyId} not found for permanent deletion.`);
     }
     return deleted;
 }
+
+
+/**
+ * Archives a strategy by changing its status to 'Archived'.
+ * @param strategyId The ID of the strategy to archive.
+ * @returns A promise that resolves to the updated (archived) Strategy object or null if not found.
+ */
+export async function archiveStrategy(strategyId: string): Promise<Strategy | null> {
+    console.log(`Archiving strategy ${strategyId}`);
+    // Use the existing updateStrategy function with the new status
+    return updateStrategy(strategyId, { status: 'Archived' });
+}
+
 
 // --- AI-related functions ---
 
@@ -246,8 +377,8 @@ export async function generateAndTestStrategyFromSuggestion(suggestion: SuggestS
             const createdStrategy = await addStrategy(newStrategyData);
             // Simulate assigning some realistic (maybe slightly random) initial PnL/WinRate after "backtest"
              if (createdStrategy) {
-                 createdStrategy.pnl = (Math.random() - 0.4) * 500; // Example: Random PnL around 0
-                 createdStrategy.winRate = 40 + Math.random() * 30; // Example: Win rate between 40-70%
+                 createdStrategy.pnl = parseFloat(((Math.random() - 0.4) * 500).toFixed(2)); // Example: Random PnL around 0
+                 createdStrategy.winRate = parseFloat((40 + Math.random() * 30).toFixed(1)); // Example: Win rate between 40-70%
                  await updateStrategy(createdStrategy.id, { pnl: createdStrategy.pnl, winRate: createdStrategy.winRate });
              }
             return createdStrategy;

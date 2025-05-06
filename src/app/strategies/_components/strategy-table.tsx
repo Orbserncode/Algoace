@@ -1,7 +1,7 @@
 // src/app/strategies/_components/strategy-table.tsx
 'use client';
 
-import React, { useState } from 'react'; // Import useState
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode } from "lucide-react"; // Removed History icon
+import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode, Archive, Eye } from "lucide-react"; // Added Archive, Eye icons
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -26,24 +26,40 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Strategy } from '@/services/strategies-service'; // Import type
-import { updateStrategy, deleteStrategy } from '@/services/strategies-service'; // Import service functions
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip
-// Removed BacktestResultDialog import
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogClose,
+} from "@/components/ui/dialog"; // Import Dialog for code view
+import type { Strategy } from '@/services/strategies-service';
+import { updateStrategy, archiveStrategy, deleteStrategyPermanently, getStrategyCode } from '@/services/strategies-service';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollArea } from '@/components/ui/scroll-area'; // For code viewer
+import { Skeleton } from '@/components/ui/skeleton'; // For code loading
 
 interface StrategyTableProps {
   strategies: Strategy[];
-  onStrategyUpdate: (updatedStrategy: Strategy) => void; // Callback for successful updates
-  onStrategyDelete: (strategyId: string) => void; // Callback for successful deletion
+  onStrategyUpdate: (updatedStrategy: Strategy) => void; // Callback for successful updates/archive
+  onStrategyDelete: (strategyId: string) => void; // Callback for successful permanent deletion
 }
 
 export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }: StrategyTableProps) {
   const { toast } = useToast();
-  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002")
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  // Removed backtest dialog state
+  const [loadingAction, setLoadingAction] = useState<string | null>(null); // Format: "action:strategyId"
+  const [isCodeViewerOpen, setIsCodeViewerOpen] = useState(false);
+  const [currentCode, setCurrentCode] = useState<string | null>(null);
+  const [currentStrategyName, setCurrentStrategyName] = useState<string>('');
+  const [isCodeLoading, setIsCodeLoading] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   const handleToggleStatus = async (strategy: Strategy) => {
+    // Don't allow toggling for Archived strategies
+    if (strategy.status === 'Archived') return;
+
     const action = strategy.status === 'Active' ? 'Pause' : 'Start';
     const newStatus = strategy.status === 'Active' ? 'Inactive' : 'Active';
     const actionId = `toggle:${strategy.id}`;
@@ -73,24 +89,79 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
     }
   };
 
-  const handleEdit = (strategyId: string) => {
-    toast({ title: "Feature Not Implemented", description: `Editing strategy ${strategyId} is not yet available.` });
+   const handleViewCode = async (strategy: Strategy) => {
+     setIsCodeLoading(true);
+     setIsCodeViewerOpen(true);
+     setCurrentStrategyName(strategy.name);
+     setCurrentCode(null); // Clear previous code
+     setCodeError(null); // Clear previous error
+
+     try {
+        const code = await getStrategyCode(strategy.id);
+        if (code) {
+            setCurrentCode(code);
+        } else {
+            // Handle case where code is not found or applicable (e.g., AI strategy without explicit code storage)
+            setCurrentCode(`# No code available for this strategy type or ID: ${strategy.id}\n# Source: ${strategy.source || 'Unknown'}`);
+            if (!strategy.source || strategy.source !== 'Uploaded') {
+                 // Optionally inform user differently for non-uploaded strategies
+                 console.warn(`No specific code file expected for strategy source: ${strategy.source}`);
+            }
+        }
+     } catch (error) {
+         console.error(`Failed to fetch code for strategy ${strategy.id}:`, error);
+         setCodeError(`Failed to load strategy code. ${error instanceof Error ? error.message : 'Please try again.'}`);
+         toast({
+            title: "Error Loading Code",
+            description: `Could not load code for "${strategy.name}".`,
+            variant: "destructive",
+         });
+     } finally {
+         setIsCodeLoading(false);
+     }
+   };
+
+
+  const handleArchiveAction = async (strategy: Strategy) => {
+     const actionId = `archive:${strategy.id}`;
+     setLoadingAction(actionId);
+
+     try {
+        const archived = await archiveStrategy(strategy.id);
+        if (archived) {
+            toast({
+                title: "Strategy Archived",
+                description: `Strategy "${archived.name}" has been archived. It will be hidden from the main list.`,
+            });
+            onStrategyUpdate(archived); // Use update callback to filter/re-render list
+        } else {
+             throw new Error("Strategy not found or archiving failed.");
+        }
+     } catch (error) {
+         console.error(`Failed to archive strategy ${strategy.id}:`, error);
+         toast({
+            title: "Error Archiving Strategy",
+            description: `Could not archive strategy "${strategy.name}". ${error instanceof Error ? error.message : 'Please try again.'}`,
+            variant: "destructive",
+         });
+     } finally {
+         setLoadingAction(null);
+     }
   };
 
-   // Removed handleBacktest function
 
   const handleDeleteConfirm = async (strategy: Strategy) => {
     const actionId = `delete:${strategy.id}`;
     setLoadingAction(actionId);
 
      try {
-        const deleted = await deleteStrategy(strategy.id);
+        const deleted = await deleteStrategyPermanently(strategy.id);
         if (deleted) {
             toast({
-                title: "Strategy Deleted",
+                title: "Strategy Deleted Permanently",
                 description: `Strategy "${strategy.name}" has been permanently deleted.`,
             });
-            onStrategyDelete(strategy.id);
+            onStrategyDelete(strategy.id); // Use delete callback to remove from list
         } else {
              throw new Error("Strategy not found or deletion failed.");
         }
@@ -98,7 +169,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
          console.error(`Failed to delete strategy ${strategy.id}:`, error);
          toast({
             title: "Error Deleting Strategy",
-            description: `Could not delete strategy "${strategy.name}". ${error instanceof Error ? error.message : 'Please try again.'}`,
+            description: `Could not permanently delete strategy "${strategy.name}". ${error instanceof Error ? error.message : 'Please try again.'}`,
             variant: "destructive",
          });
      } finally {
@@ -110,12 +181,14 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
   const getStatusBadgeVariant = (status: Strategy['status']) => {
     switch (status) {
       case 'Active':
-        return 'default';
+        return 'default'; // Primary (Blue)
       case 'Inactive':
-        return 'secondary';
+        return 'secondary'; // Gray
       case 'Debugging':
-      case 'Backtesting': // Keep this case for potential status updates
-        return 'outline';
+      case 'Backtesting':
+        return 'outline'; // Outline
+      case 'Archived':
+        return 'destructive'; // Use destructive-like color for visibility
       default:
         return 'secondary';
     }
@@ -144,7 +217,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             <TableHead className="w-[100px] hidden md:table-cell">Source</TableHead>
             <TableHead className="text-right hidden sm:table-cell w-[120px]">P&L (USD)</TableHead>
             <TableHead className="text-right hidden lg:table-cell w-[100px]">Win Rate</TableHead>
-            <TableHead className="text-right w-[150px]">Actions</TableHead> {/* Adjusted width */}
+            <TableHead className="text-right w-[180px]">Actions</TableHead> {/* Increased width for more buttons */}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -157,9 +230,10 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
            )}
           {strategies.map((strategy) => {
               const isToggling = loadingAction === `toggle:${strategy.id}`;
+              const isArchiving = loadingAction === `archive:${strategy.id}`;
               const isDeleting = loadingAction === `delete:${strategy.id}`;
-              // Removed isBacktesting
-              const isAnyLoading = isToggling || isDeleting;
+              const isViewingCode = loadingAction === `viewCode:${strategy.id}`; // Use consistent pattern
+              const isAnyLoading = isToggling || isArchiving || isDeleting || isViewingCode;
 
               return (
                 <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
@@ -193,12 +267,13 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                   <TableCell className="text-right">
                     <div className="flex justify-end space-x-1 items-center">
                        {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
+                       {isArchiving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
                        {isDeleting && <Loader2 className="h-4 w-4 animate-spin text-destructive mr-1" />}
-                       {/* Removed backtest loader */}
+                       {isViewingCode && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
 
                        {!isAnyLoading && (
                            <>
-                               {/* Start/Pause Button */}
+                               {/* Start/Pause Button - Only if not Archived */}
                                {(strategy.status === 'Active' || strategy.status === 'Inactive') && (
                                   <Tooltip>
                                       <TooltipTrigger asChild>
@@ -212,12 +287,22 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                   </Tooltip>
                                )}
 
-                               {/* Removed Backtest Button */}
+                               {/* View Code Button */}
+                               <Tooltip>
+                                  <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" aria-label="View Strategy Code" onClick={() => handleViewCode(strategy)} disabled={isAnyLoading}>
+                                          <Eye className="h-4 w-4" />
+                                      </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                      <p>View Strategy Code</p>
+                                  </TooltipContent>
+                               </Tooltip>
 
-                               {/* Edit Button */}
+                               {/* Edit Button (Placeholder/Future) */}
                               <Tooltip>
                                   <TooltipTrigger asChild>
-                                       <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => handleEdit(strategy.id)} disabled={isAnyLoading}>
+                                       <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => toast({ title: "Feature Not Implemented", description: `Editing strategy ${strategy.id} is not yet available.` })} disabled={isAnyLoading}>
                                         <Edit className="h-4 w-4" />
                                        </Button>
                                   </TooltipTrigger>
@@ -226,34 +311,52 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                    </TooltipContent>
                               </Tooltip>
 
-                               {/* Delete Button */}
+                               {/* Archive/Delete Button */}
                                <AlertDialog>
                                   <Tooltip>
                                       <TooltipTrigger asChild>
                                          <AlertDialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label="Delete Strategy" disabled={isAnyLoading}>
-                                                <Trash2 className="h-4 w-4" />
+                                            {/* Show Archive icon if not archived, Trash if archived */}
+                                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" aria-label={strategy.status === 'Archived' ? "Delete Permanently" : "Archive Strategy"} disabled={isAnyLoading}>
+                                                 {strategy.status === 'Archived' ? <Trash2 className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                                             </Button>
                                         </AlertDialogTrigger>
                                       </TooltipTrigger>
                                        <TooltipContent>
-                                          <p>Delete Strategy</p>
+                                          <p>{strategy.status === 'Archived' ? "Delete Permanently" : "Archive or Delete"}</p>
                                        </TooltipContent>
                                   </Tooltip>
                                   <AlertDialogContent>
                                       <AlertDialogHeader>
-                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                      <AlertDialogTitle>Confirm Action</AlertDialogTitle>
                                       <AlertDialogDescription>
-                                          This action cannot be undone. This will permanently delete the strategy
-                                          "{strategy.name}".
-                                          {strategy.fileName && ` (File: ${strategy.fileName})`}
+                                          {strategy.status === 'Archived'
+                                            ? `This action cannot be undone. This will permanently delete the archived strategy "${strategy.name}".`
+                                            : `Choose an action for strategy "${strategy.name}". Archiving will hide it from the main list but keep its data. Deleting is permanent.`}
+                                           {strategy.fileName && ` (File: ${strategy.fileName})`}
                                       </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
-                                      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteConfirm(strategy)} className={buttonVariants({ variant: "destructive" })} disabled={isDeleting}>
-                                          Delete
-                                      </AlertDialogAction>
+                                          <AlertDialogCancel disabled={isDeleting || isArchiving}>Cancel</AlertDialogCancel>
+                                          {/* Show Archive button only if not already archived */}
+                                          {strategy.status !== 'Archived' && (
+                                              <Button
+                                                  variant="outline"
+                                                  onClick={() => handleArchiveAction(strategy)}
+                                                  disabled={isDeleting || isArchiving}
+                                                >
+                                                  {isArchiving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                  Archive
+                                              </Button>
+                                          )}
+                                          <AlertDialogAction
+                                              onClick={() => handleDeleteConfirm(strategy)}
+                                              className={buttonVariants({ variant: "destructive" })}
+                                              disabled={isDeleting || isArchiving}
+                                            >
+                                               {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                               Delete Permanently
+                                           </AlertDialogAction>
                                       </AlertDialogFooter>
                                   </AlertDialogContent>
                               </AlertDialog>
@@ -268,7 +371,43 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
       </Table>
     </TooltipProvider>
 
-    {/* Removed Backtest Result Dialog rendering */}
+     {/* Code Viewer Dialog */}
+     <Dialog open={isCodeViewerOpen} onOpenChange={setIsCodeViewerOpen}>
+        <DialogContent className="sm:max-w-[80vw] lg:max-w-[60vw] h-[80vh] flex flex-col">
+             <DialogHeader>
+                 <DialogTitle>Strategy Code: {currentStrategyName}</DialogTitle>
+                 <DialogDescription>
+                     Viewing the code for strategy "{currentStrategyName}". Read-only.
+                 </DialogDescription>
+             </DialogHeader>
+             <ScrollArea className="flex-1 border rounded-md p-4 bg-muted/30">
+                 {isCodeLoading && (
+                     <div className="space-y-2">
+                        <Skeleton className="h-4 w-[80%]" />
+                        <Skeleton className="h-4 w-[90%]" />
+                        <Skeleton className="h-4 w-[70%]" />
+                        <Skeleton className="h-4 w-[85%]" />
+                     </div>
+                 )}
+                 {codeError && <p className="text-destructive">{codeError}</p>}
+                 {!isCodeLoading && !codeError && currentCode && (
+                    <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+                        <code>{currentCode}</code>
+                    </pre>
+                 )}
+                  {!isCodeLoading && !codeError && !currentCode && (
+                       <p className="text-muted-foreground">No code content loaded.</p>
+                  )}
+             </ScrollArea>
+             <DialogFooter>
+                 <DialogClose asChild>
+                     <Button type="button" variant="secondary">
+                         Close
+                     </Button>
+                 </DialogClose>
+             </DialogFooter>
+        </DialogContent>
+     </Dialog>
     </>
   );
 }
