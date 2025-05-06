@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from .database import create_db_and_tables, engine # Import engine for potential disconnect
 from .api import strategies # Import the strategies router
-# Import other routers as they are created (e.g., agents, monitoring)
+from .api import agents as agents_router # Import the new agents router
 
 # Define lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -30,7 +30,8 @@ async def lifespan(app: FastAPI):
     # Dispose of the database engine connection pool
     if engine:
         try:
-            await engine.dispose() # Use await for async dispose if available/needed
+            # For SQLAlchemy 2.0, engine.dispose() is synchronous
+            engine.dispose() 
             print("Database engine disposed.")
         except Exception as e:
             print(f"Error disposing database engine: {e}")
@@ -63,7 +64,7 @@ app.add_middleware(
 
 # --- Include API Routers ---
 app.include_router(strategies.router)
-# app.include_router(agents.router) # Add other routers here
+app.include_router(agents_router.router) # Add agents router
 # app.include_router(monitoring.router)
 # app.include_router(cli.router)
 
@@ -75,3 +76,4 @@ async def root():
 # --- Run with Uvicorn (for local development) ---
 # Use the command: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 # The command is typically run from the project root directory.
+

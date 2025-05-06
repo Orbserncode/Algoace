@@ -25,7 +25,7 @@ if config.config_file_name is not None:
 
 # --- SQLModel Integration ---
 # Import your SQLModel models here so Alembic can detect changes
-from backend.models import Strategy # Import all your SQLModel table models
+from backend.models import Strategy, Agent # Import all your SQLModel table models
 from backend.database import SQLModel # Import the base SQLModel
 
 target_metadata = SQLModel.metadata
@@ -85,7 +85,7 @@ def run_migrations_online() -> None:
         )
     else:
         # Fallback if section is not found (shouldn't happen with default ini)
-        from backend.database import engine
+        from backend.database import engine # type: ignore
         connectable = engine
 
 

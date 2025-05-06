@@ -1,6 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Type
 from sqlmodel import Session, select
-from . import models
+from pydantic import ValidationError # Import for catching validation errors
+
+from . import models, schemas # Import schemas for validation
+from .models import Agent as AgentModel # Alias to avoid conflict with schemas.Agent
 
 # === Strategy CRUD ===
 
@@ -52,4 +55,77 @@ def delete_strategy(*, session: Session, strategy_id: int) -> bool:
     session.commit()
     return True
 
-# TODO: Add CRUD functions for other resources (Agents, Logs, etc.) later
+
+# === Agent CRUD ===
+
+def create_agent(*, session: Session, agent_in: schemas.AgentCreate) -> AgentModel:
+    """Creates a new agent record in the database after validating its config."""
+    # Validate the config based on agent type
+    try:
+        # The config from AgentCreate is a dict, parse it using the utility
+        parsed_config = schemas.parse_agent_config(agent_in.type, agent_in.config or {})
+    except ValidationError as e:
+        # Re-raise or handle as a specific HTTP error in the API layer
+        raise ValueError(f"Invalid configuration for agent type {agent_in.type}: {e.errors()}")
+
+    # Create the SQLModel object for the database
+    # Pass the parsed_config.model_dump() to ensure the validated and typed config is stored
+    db_agent = AgentModel.model_validate({
+        **agent_in.model_dump(exclude={'config'}), # Exclude raw config dict
+        'config': parsed_config.model_dump() # Use the validated model's dict
+    })
+    
+    session.add(db_agent)
+    session.commit()
+    session.refresh(db_agent)
+    return db_agent
+
+def get_agent(*, session: Session, agent_id: int) -> Optional[AgentModel]:
+    """Gets a single agent by its ID."""
+    statement = select(AgentModel).where(AgentModel.id == agent_id)
+    agent = session.exec(statement).first()
+    return agent
+
+def get_agents(*, session: Session, skip: int = 0, limit: int = 100) -> List[AgentModel]:
+    """Gets a list of agents, with optional pagination."""
+    statement = select(AgentModel).offset(skip).limit(limit)
+    agents = session.exec(statement).all()
+    return agents
+
+def update_agent(*, session: Session, agent_id: int, agent_in: schemas.AgentUpdate) -> Optional[AgentModel]:
+    """Updates an existing agent. Config validation is applied if config is updated."""
+    db_agent = get_agent(session=session, agent_id=agent_id)
+    if not db_agent:
+        return None
+
+    update_data = agent_in.model_dump(exclude_unset=True)
+    
+    if 'config' in update_data and update_data['config'] is not None:
+        # If config is being updated, validate it against the agent's type
+        # The agent's type itself cannot be changed in an update in this model
+        try:
+            parsed_config = schemas.parse_agent_config(db_agent.type, update_data['config'])
+            update_data['config'] = parsed_config.model_dump() # Store validated config
+        except ValidationError as e:
+            raise ValueError(f"Invalid new configuration for agent type {db_agent.type}: {e.errors()}")
+    
+    for key, value in update_data.items():
+        setattr(db_agent, key, value)
+
+    session.add(db_agent)
+    session.commit()
+    session.refresh(db_agent)
+    return db_agent
+
+def delete_agent(*, session: Session, agent_id: int) -> bool:
+    """Deletes an agent by its ID."""
+    db_agent = get_agent(session=session, agent_id=agent_id)
+    if not db_agent:
+        return False
+    if db_agent.isDefault: # Prevent deleting default agents
+        return False 
+    session.delete(db_agent)
+    session.commit()
+    return True
+
+# TODO: Add CRUD functions for other resources (Logs, etc.) later
