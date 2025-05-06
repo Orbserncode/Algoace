@@ -7,6 +7,7 @@
  */
 
 import type { PerformanceDataPoint } from './monitoring-service'; // Reuse type for equity curve
+import { format } from "date-fns"; // Import date-fns for date formatting
 
 export interface BacktestSummaryMetrics {
   netProfit: number;
@@ -15,8 +16,8 @@ export interface BacktestSummaryMetrics {
   winRate: number; // As a decimal, e.g., 0.65 for 65%
   totalTrades: number;
   avgTradePnl: number;
-  startDate?: string; // Optional: Date backtest started
-  endDate?: string; // Optional: Date backtest ended
+  startDate?: string; // Optional: Date backtest started (YYYY-MM-DD)
+  endDate?: string; // Optional: Date backtest ended (YYYY-MM-DD)
   sharpeRatio?: number; // Optional: Add more metrics as available
   sortinoRatio?: number; // Optional
   symbol?: string; // Asset/Symbol tested
@@ -118,7 +119,7 @@ const mockBacktestDb: Record<string, BacktestResults> = {
         ],
         parameters: { model_version: 'v2.1', confidence_threshold: 0.7, symbol: 'GOOGL', timeframe: '4h' }
     },
-     'strat-002': { // Example for a strategy with poor results
+     'strat-002': { // Example for a strategy with poor results - WILL BE OVERWRITTEN by successful AAPL test
          strategyId: 'strat-002',
          timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
          summaryMetrics: {
@@ -147,11 +148,54 @@ const mockBacktestDb: Record<string, BacktestResults> = {
 };
 
 // Simulate potential API/DB errors
-const simulateError = (probability = 0.1) => {
+const simulateError = (probability = 0.1): void => {
     if (Math.random() < probability) {
+        console.warn(`Simulating a service error (probability: ${probability})`);
         throw new Error("Simulated backtesting service error.");
     }
 }
+
+/**
+ * Generates a mock equity curve for a given period.
+ */
+const generateMockEquityCurve = (startDateStr: string, endDateStr: string, initialCapital: number): PerformanceDataPoint[] => {
+    const curve: PerformanceDataPoint[] = [];
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    let currentDate = new Date(startDate);
+    let currentValue = initialCapital;
+    let currentProfit = 0;
+
+    while (currentDate <= endDate) {
+        // Simulate daily change
+        const dailyChangePercent = (Math.random() - 0.45) * 0.02; // Small daily fluctuation +/-
+        const dailyPnl = currentValue * dailyChangePercent;
+        currentValue += dailyPnl;
+        currentProfit += dailyPnl;
+
+        curve.push({
+            date: format(currentDate, "yyyy-MM-dd"),
+            portfolioValue: Math.max(0, currentValue), // Ensure value doesn't go below 0
+            profit: currentProfit,
+        });
+
+        // Move to the next day
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Ensure the last point is exactly the end date
+    if (curve[curve.length - 1].date !== endDateStr) {
+         curve.push({
+             date: endDateStr,
+             portfolioValue: Math.max(0, currentValue),
+             profit: currentProfit
+         });
+    }
+
+
+    return curve;
+}
+
 
 /**
  * Fetches the latest backtest results for a given strategy.
@@ -163,24 +207,21 @@ const simulateError = (probability = 0.1) => {
  * @throws Throws an error if the backtest results are not found or if fetching fails.
  */
 export async function getBacktestResults(strategyId: string): Promise<BacktestResults> {
-    console.log(`Fetching backtest results for strategy: ${strategyId}`);
+    console.log(`SERVICE: Fetching backtest results for strategy: ${strategyId}`);
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 500));
-    simulateError(0.1); // Simulate potential fetch error
+
+    // Do NOT simulate error here - let the calling component handle missing data
+    // simulateError(0.1);
 
     const results = mockBacktestDb[strategyId];
 
     if (!results) {
-        // Simulate a case where backtest hasn't been run or results aren't stored
-        console.warn(`No backtest results found for strategy ${strategyId}.`);
-        // NOTE: In a real system triggered by runBacktest, you might loop/wait here or rely on the job status polling.
-        // For direct fetching, throwing an error is appropriate.
+        console.warn(`SERVICE: No backtest results found for strategy ${strategyId}.`);
         throw new Error(`No backtest results available for strategy "${strategyId}". Please run a backtest first.`);
     }
 
-    console.log(`Returning backtest results for ${strategyId}`);
-    // Simulate adapting the result based on *requested* params if needed (more complex mock)
-    // For now, just return the stored mock result.
+    console.log(`SERVICE: Returning backtest results for ${strategyId}`);
     return results;
 }
 
@@ -200,7 +241,7 @@ export async function runBacktest(strategyId: string, parameters: {
     timeframe: string; // e.g., '1d', '1h'
     // Add other potential parameters like leverage, specific strategy params overrides, etc.
 }): Promise<{ jobId: string }> {
-    console.log(`Requesting backtest run for strategy: ${strategyId} with params:`, parameters);
+    console.log(`SERVICE: Requesting backtest run for strategy: ${strategyId} with params:`, parameters);
     // Simulate API call to backend to trigger the backtest
     await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 200)); // Reduced delay
 
@@ -215,7 +256,7 @@ export async function runBacktest(strategyId: string, parameters: {
     // -------------------------------------
 
     const jobId = `backtest-${strategyId}-${Date.now().toString().slice(-6)}`;
-    console.log(`Backtest job queued/started for ${strategyId}. Job ID: ${jobId}`);
+    console.log(`SERVICE: Backtest job queued/started for ${strategyId}. Job ID: ${jobId}`);
 
     // Simulate triggering the job - set status to RUNNING immediately
     mockJobStatuses[jobId] = 'RUNNING';
@@ -225,33 +266,82 @@ export async function runBacktest(strategyId: string, parameters: {
     }
 
     // --- Mock: Simulate job completion and result population ---
-    const backtestDuration = 8000 + Math.random() * 5000; // Simulate backtest duration (8-13 seconds)
+    const backtestDuration = 5000 + Math.random() * 3000; // Simulate backtest duration (5-8 seconds for testing)
     mockJobTimeouts[jobId] = setTimeout(() => {
-        const baseResult = mockBacktestDb[strategyId];
-        const shouldFail = Math.random() < 0.1; // 10% chance of simulated failure
+        // FORCE SUCCESS FOR AAPL FOR TESTING
+        const shouldFail = parameters.symbol !== 'AAPL' && Math.random() < 0.3; // 30% chance of failure for non-AAPL
+        let baseResult = mockBacktestDb[strategyId];
 
-        if (baseResult && !shouldFail) {
+         if (!baseResult) {
+             // If no base result exists, create a placeholder
+             baseResult = {
+                 strategyId: strategyId,
+                 timestamp: new Date().toISOString(),
+                 summaryMetrics: {
+                     netProfit: 0, profitFactor: 1, maxDrawdown: 0, winRate: 0.5, totalTrades: 0, avgTradePnl: 0
+                 },
+                 equityCurve: [],
+                 trades: [],
+             };
+             console.warn(`SERVICE: No base mock result for ${strategyId}, created placeholder.`);
+         }
+
+
+        if (!shouldFail) {
+            // Generate a mock equity curve for the requested period
+            const equityCurve = generateMockEquityCurve(parameters.startDate, parameters.endDate, parameters.initialCapital);
+            const finalEquity = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].portfolioValue : parameters.initialCapital;
+            const netProfit = finalEquity - parameters.initialCapital;
+            const totalTrades = Math.floor(Math.random() * 50) + 5; // Random trades (5-55)
+            const winRate = 0.4 + Math.random() * 0.35; // Random win rate (40-75%)
+            const profitFactor = Math.max(0.5, 1 + (Math.random() - 0.5) * 1.5); // Random profit factor around 1 (min 0.5)
+            const maxDrawdown = Math.random() * 0.25 + 0.05; // Random drawdown (5-30%)
+
              // Update/overwrite the mock result in the DB simulation
              mockBacktestDb[strategyId] = {
                  ...baseResult,
                  timestamp: new Date().toISOString(),
                  parameters: { ...baseResult.parameters, ...parameters }, // Include run parameters
+                 equityCurve: equityCurve,
                  summaryMetrics: {
-                     ...baseResult.summaryMetrics,
+                     // Use newly generated mock metrics
+                     netProfit: parseFloat(netProfit.toFixed(2)),
+                     profitFactor: parseFloat(profitFactor.toFixed(2)),
+                     maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
+                     winRate: parseFloat(winRate.toFixed(2)),
+                     totalTrades: totalTrades,
+                     avgTradePnl: totalTrades > 0 ? parseFloat((netProfit / totalTrades).toFixed(2)) : 0,
+                     // Keep dates/symbol/timeframe from parameters
                      startDate: parameters.startDate,
                      endDate: parameters.endDate,
                      symbol: parameters.symbol,
                      timeframe: parameters.timeframe,
-                     // Simulate slightly different results based on params (very basic example)
-                     netProfit: baseResult.summaryMetrics.netProfit * (0.9 + Math.random() * 0.2),
-                     maxDrawdown: baseResult.summaryMetrics.maxDrawdown * (0.9 + Math.random() * 0.2),
-                 }
+                     // Add other metrics if needed (can be random/fixed for mock)
+                     sharpeRatio: parseFloat((Math.random() * 2 - 0.5).toFixed(2)), // Random Sharpe
+                 },
+                 // Could also generate mock trades if needed
+                 trades: [
+                      { entryTimestamp: parameters.startDate + 'T10:00:00Z', exitTimestamp: parameters.startDate + 'T15:30:00Z', symbol: parameters.symbol, direction: 'Long', entryPrice: 130.50 * (0.9 + Math.random()*0.2), exitPrice: 131.80 * (0.9 + Math.random()*0.2), quantity: 10, pnl: 13.00 * (0.9 + Math.random()*0.2) },
+                 ],
              };
              mockJobStatuses[jobId] = 'COMPLETED';
-             console.log(`Mock backtest job ${jobId} completed successfully and results updated for ${strategyId}.`);
+             console.log(`SERVICE: Mock backtest job ${jobId} completed successfully and results updated for ${strategyId} with symbol ${parameters.symbol}.`);
         } else {
             mockJobStatuses[jobId] = 'FAILED';
-            console.error(`Mock backtest job ${jobId} marked as FAILED for strategy ${strategyId}.`);
+            console.error(`SERVICE: Mock backtest job ${jobId} marked as FAILED for strategy ${strategyId}.`);
+             // Optionally add error info to the results?
+             mockBacktestDb[strategyId] = {
+                 ...baseResult,
+                 timestamp: new Date().toISOString(),
+                 parameters: { ...baseResult.parameters, ...parameters },
+                 summaryMetrics: { // Reset metrics on failure?
+                    netProfit: 0, profitFactor: 0, maxDrawdown: 0, winRate: 0, totalTrades: 0, avgTradePnl: 0,
+                    startDate: parameters.startDate, endDate: parameters.endDate, symbol: parameters.symbol, timeframe: parameters.timeframe,
+                 },
+                 equityCurve: [], // Clear curve on failure
+                 trades: [], // Clear trades on failure
+                 logOutput: "Simulated backtest failure: Could not load historical data.", // Add mock error log
+             };
         }
         delete mockJobTimeouts[jobId]; // Clean up timeout reference
     }, backtestDuration);
@@ -260,7 +350,7 @@ export async function runBacktest(strategyId: string, parameters: {
     try {
         simulateError(0.05); // Low chance of error during the initial queueing itself
     } catch (err) {
-         console.error(`Error during immediate queueing of job ${jobId}:`, err);
+         console.error(`SERVICE: Error during immediate queueing of job ${jobId}:`, err);
          mockJobStatuses[jobId] = 'FAILED'; // Mark as failed if queueing fails
          if (mockJobTimeouts[jobId]) clearTimeout(mockJobTimeouts[jobId]); // Clear timeout
          delete mockJobTimeouts[jobId];
@@ -278,14 +368,16 @@ export async function runBacktest(strategyId: string, parameters: {
  * @returns A promise resolving to the job status ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED').
  */
 export async function getBacktestJobStatus(jobId: string): Promise<JobStatus> {
-     console.log(`Checking status for backtest job: ${jobId}`);
+     // console.log(`SERVICE: Checking status for backtest job: ${jobId}`); // Less noisy logging
      await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 100)); // Faster status check
-     simulateError(0.05); // Low chance of error checking status
+
+     // Do not simulate error here, let polling handle transient issues if needed
+     // simulateError(0.05);
 
      // --- Mock Status Logic ---
      // Use the in-memory mockJobStatuses store. Default to PENDING if not found.
      const status = mockJobStatuses[jobId] || 'PENDING';
-     console.log(`Mock status for job ${jobId}: ${status}`);
+     // console.log(`SERVICE: Mock status for job ${jobId}: ${status}`); // Less noisy logging
      return status;
      // -----------------------
 }
