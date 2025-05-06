@@ -94,14 +94,8 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
             if (fetchedConfig) {
                 const validatedConfig = formSchema.parse(fetchedConfig);
                 form.reset(validatedConfig);
-                // If the agent uses LLM models, fetch available models for its provider
                 if ('llmModelProviderId' in validatedConfig && validatedConfig.llmModelProviderId) {
-                     // Fetch LLM Models based on the loaded config's provider ID
-                     // This requires knowing the provider *type* and potentially its API key from settings service, which is complex for this mock
-                     // For mock, let's assume we can get models by provider ID if it implies type.
-                     // This part needs a more robust settings service in a real app.
-                     // Using a generic call for now, assuming providerId is enough for mock.
-                    const models = await getAvailableLlmModels((validatedConfig as any).llmModelProviderType || 'google'); // Mock: use type if available or default to google
+                    const models = await getAvailableLlmModels((validatedConfig as any).llmModelProviderType || 'google');
                     setAvailableLlmModels(models);
                 }
             } else {
@@ -126,15 +120,12 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
   const selectedLlmProviderId = form.watch('llmModelProviderId' as any);
   useEffect(() => {
     async function fetchModelsForProvider() {
-        if (!selectedLlmProviderId || (agent.type !== 'Strategy Coding Agent' && agent.type !== 'Analysis Agent')) {
+        if (!selectedLlmProviderId || !['Strategy Coding Agent', 'Analysis Agent', 'Execution Agent'].includes(agent.type)) {
             setAvailableLlmModels([]);
             return;
         }
         setIsLoadingLlmModels(true);
         try {
-            // Mock: In a real app, fetch LLMProviderConfig from settings service by ID to get its type and API key
-            // Then call getAvailableLlmModels(providerType, apiKey)
-            // For mock, we'll guess the type or use a default
             const providerTypeGuess = selectedLlmProviderId.includes('google') ? 'google' : selectedLlmProviderId.includes('openai') ? 'openai' : 'local';
             const models = await getAvailableLlmModels(providerTypeGuess as any);
             setAvailableLlmModels(models);
@@ -154,7 +145,6 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
   const handleBrokerChangeForAsset = async (assetIndex: number, brokerId: string) => {
     if (!brokerId || brokerAssetCache[brokerId]) return; // Already cached or no broker
     try {
-        // Mock: this would ideally use the broker's API based on its config
         const assets = await fetchBrokerAssets(/* brokerConfig for brokerId */);
         setBrokerAssetCache(prev => ({ ...prev, [brokerId]: assets }));
     } catch (error) {
@@ -191,9 +181,8 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
         const description = fieldSchema.description || '';
         const label = fieldName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); // Auto-label
 
-        // LLM Model Provider Selection (for Strategy Coding and Analysis Agents)
-        if (fieldName === 'llmModelProviderId' && (agent.type === 'Strategy Coding Agent' || agent.type === 'Analysis Agent')) {
-            // TODO: Fetch actual configured LLM Providers from settings service
+        // LLM Model Provider Selection
+        if (fieldName === 'llmModelProviderId' && ['Strategy Coding Agent', 'Analysis Agent', 'Execution Agent'].includes(agent.type)) {
             const mockLlmProviders: LLMProviderConfig[] = [
                 { id: 'llm-google-default', providerType: 'google', modelName: 'gemini-2.0-flash' },
                 { id: 'llm-openai-default', providerType: 'openai', modelName: 'gpt-4-turbo' },
@@ -214,8 +203,8 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
                 )} />
             );
         }
-        // LLM Model Name Selection (dependent on provider)
-        if (fieldName === 'llmModelName' && (agent.type === 'Strategy Coding Agent' || agent.type === 'Analysis Agent')) {
+        // LLM Model Name Selection
+        if (fieldName === 'llmModelName' && ['Strategy Coding Agent', 'Analysis Agent', 'Execution Agent'].includes(agent.type)) {
             return (
                 <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                     <FormItem>
@@ -252,7 +241,7 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
             );
         }
 
-        // Watched Assets (for Data Agent) - Special Handling for Array of Objects
+        // Watched Assets (for Data Agent)
         if (fieldName === 'watchedAssets' && agent.type === 'Data Agent') {
             return (
                 <div key={fieldName} className="space-y-4 p-4 border rounded-md">
@@ -293,8 +282,7 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
             );
         }
 
-
-        // Enabled Tools Selection (Checkbox group)
+        // Enabled Tools Selection
         if (fieldName === 'enabledTools') {
             return (
                 <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
@@ -331,12 +319,13 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
             );
         }
 
-
+        // JSON Input for 'record(z.any())'
         if (fieldSchema instanceof z.ZodRecord && fieldSchema.valueSchema instanceof z.ZodAny) {
             return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                         <FormItem><FormLabel>{label}</FormLabel><FormControl><JsonInput value={field.value} onChange={field.onChange} placeholder={`Enter JSON for ${label}...`} disabled={isSaving} /></FormControl><FormDescription>{description}</FormDescription><FormMessage /></FormItem>
                     )} /> );
         }
+        // Enum as Select
         if (fieldSchema.typeName === 'ZodEnum') {
             const options = fieldSchema._def.values as string[];
             return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
@@ -348,6 +337,17 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
                         <FormDescription>{description}</FormDescription><FormMessage /></FormItem>
                     )} /> );
         }
+         // Specific boolean switch for 'requiresAllAgentConfirmation'
+        if (fieldName === 'requiresAllAgentConfirmation' && agent.type === 'Execution Agent') {
+            return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
+                       <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                           <div className="space-y-0.5"><FormLabel className="text-base">{label}</FormLabel><FormDescription>{description}</FormDescription></div>
+                           <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} /></FormControl>
+                           <FormMessage />
+                       </FormItem>
+                   )} /> );
+        }
+        // Boolean as Switch
         if (fieldSchema.typeName === 'ZodBoolean') {
              return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
@@ -357,6 +357,7 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
                         </FormItem>
                     )} /> );
         }
+        // Number Input
         if (fieldSchema.typeName === 'ZodNumber') {
              return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                         <FormItem><FormLabel>{label}</FormLabel><FormControl>
@@ -364,6 +365,7 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
                         </FormControl><FormDescription>{description}</FormDescription><FormMessage /></FormItem>
                     )} /> );
         }
+        // Array of Strings as comma-separated Input
         if (fieldSchema.typeName === 'ZodArray' && fieldSchema._def.type.typeName === 'ZodString') {
              return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                         <FormItem><FormLabel>{label} (comma-separated)</FormLabel><FormControl>
@@ -371,14 +373,21 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
                         </FormControl><FormDescription>{description}</FormDescription><FormMessage /></FormItem>
                     )} /> );
         }
-        const isLongString = (fieldName.toLowerCase().includes('prompt') || fieldName.toLowerCase().includes('instructions'));
-        if (fieldSchema.typeName === 'ZodString' && isLongString) {
+
+        // Prompts and Instructions as Textarea
+        const isLongStringField = (
+            fieldName.toLowerCase().includes('prompt') ||
+            fieldName.toLowerCase().includes('instructions') ||
+            fieldName.toLowerCase().includes('logic') // e.g. executionLogicPrompt
+        );
+        if (fieldSchema.typeName === 'ZodString' && isLongStringField) {
             return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                         <FormItem><FormLabel>{label}</FormLabel><FormControl>
-                            <Textarea placeholder={`Enter ${label}...`} className="min-h-[200px] font-mono text-xs" {...field} disabled={isSaving} />
+                            <Textarea placeholder={`Enter ${label}...`} className="min-h-[200px] font-mono text-xs" {...field} value={field.value ?? ''} disabled={isSaving} />
                         </FormControl><FormDescription>{description}</FormDescription><FormMessage /></FormItem>
                     )} /> );
         }
+        // Default String Input
          return ( <FormField key={fieldName} control={form.control} name={fieldName} render={({ field }) => (
                     <FormItem><FormLabel>{label}</FormLabel><FormControl>
                         <Input placeholder={`Enter ${label}...`} {...field} value={field.value ?? ''} disabled={isSaving} />
@@ -406,7 +415,7 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
         </ScrollArea>
          <DialogFooter className="mt-auto pt-4 border-t">
              <DialogClose asChild><Button type="button" variant="outline" disabled={isSaving || isLoadingConfig}>Cancel</Button></DialogClose>
-             <Button type="button" onClick={form.handleSubmit(onSubmit)} disabled={isSaving || isLoadingConfig}>
+             <Button type="button" onClick={form.handleSubmit(onSubmit)} disabled={isSaving || isLoadingConfig || !form.formState.isDirty}>
                   {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Save Changes
              </Button>
          </DialogFooter>
