@@ -47,7 +47,14 @@ export interface BacktestResults {
   logOutput?: string; // Raw log output from the backtesting engine (optional)
 }
 
-// --- Mock Data ---
+type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+// --- Mock Data & State ---
+// In-memory store for mock job statuses
+const mockJobStatuses: Record<string, JobStatus> = {};
+const mockJobTimeouts: Record<string, NodeJS.Timeout> = {};
+
+
 // TODO: Replace with actual data fetching from your backend/database.
 // This mock data should ideally be keyed by strategy ID AND potentially parameters used.
 // For simplicity, we'll key by strategy ID for now and assume it returns the *latest* result.
@@ -196,7 +203,6 @@ export async function runBacktest(strategyId: string, parameters: {
     console.log(`Requesting backtest run for strategy: ${strategyId} with params:`, parameters);
     // Simulate API call to backend to trigger the backtest
     await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 200)); // Reduced delay
-    simulateError(0.15); // Simulate potential error in triggering
 
     // --- Backend actions needed here: ---
     // 1. Validate strategyId and parameters.
@@ -204,19 +210,29 @@ export async function runBacktest(strategyId: string, parameters: {
     // 3. Queue a job in a task queue (like Celery, RQ, BullMQ) or directly invoke the backtesting engine.
     // 4. Pass the strategy code path and *all relevant parameters* (dates, capital, symbol, timeframe, etc.) to the job.
     // 5. The job runner would execute Lumibot (or similar).
-    // 6. Upon completion, the job runner saves the results (summary, equity curve, trades, *parameters used*) to the database/store, possibly associated with the job ID and strategy ID.
+    // 6. Upon completion, the job runner saves the results (summary, equity curve, trades, *parameters used*) to the database/store, possibly associated with the job ID and strategy ID. Also update job status.
     // 7. Optionally update the strategy status (e.g., 'Backtesting').
     // -------------------------------------
 
     const jobId = `backtest-${strategyId}-${Date.now().toString().slice(-6)}`;
     console.log(`Backtest job queued/started for ${strategyId}. Job ID: ${jobId}`);
 
-    // --- Mock: Pre-populate result after a delay for polling ---
-    // In a real system, the job runner would save the results. Here we simulate it.
-    setTimeout(() => {
+    // Simulate triggering the job - set status to RUNNING immediately
+    mockJobStatuses[jobId] = 'RUNNING';
+    // Clear any previous timeout for this job ID
+    if (mockJobTimeouts[jobId]) {
+        clearTimeout(mockJobTimeouts[jobId]);
+    }
+
+    // --- Mock: Simulate job completion and result population ---
+    const backtestDuration = 8000 + Math.random() * 5000; // Simulate backtest duration (8-13 seconds)
+    mockJobTimeouts[jobId] = setTimeout(() => {
         const baseResult = mockBacktestDb[strategyId];
-        if (baseResult) {
-             mockBacktestDb[strategyId] = { // Overwrite/update the mock result
+        const shouldFail = Math.random() < 0.1; // 10% chance of simulated failure
+
+        if (baseResult && !shouldFail) {
+             // Update/overwrite the mock result in the DB simulation
+             mockBacktestDb[strategyId] = {
                  ...baseResult,
                  timestamp: new Date().toISOString(),
                  parameters: { ...baseResult.parameters, ...parameters }, // Include run parameters
@@ -231,10 +247,26 @@ export async function runBacktest(strategyId: string, parameters: {
                      maxDrawdown: baseResult.summaryMetrics.maxDrawdown * (0.9 + Math.random() * 0.2),
                  }
              };
-             console.log(`Mock backtest job ${jobId} completed and results updated for ${strategyId}.`);
+             mockJobStatuses[jobId] = 'COMPLETED';
+             console.log(`Mock backtest job ${jobId} completed successfully and results updated for ${strategyId}.`);
+        } else {
+            mockJobStatuses[jobId] = 'FAILED';
+            console.error(`Mock backtest job ${jobId} marked as FAILED for strategy ${strategyId}.`);
         }
-    }, 8000 + Math.random() * 5000); // Simulate backtest duration (8-13 seconds)
+        delete mockJobTimeouts[jobId]; // Clean up timeout reference
+    }, backtestDuration);
     // --------------------------------------------------------
+
+    try {
+        simulateError(0.05); // Low chance of error during the initial queueing itself
+    } catch (err) {
+         console.error(`Error during immediate queueing of job ${jobId}:`, err);
+         mockJobStatuses[jobId] = 'FAILED'; // Mark as failed if queueing fails
+         if (mockJobTimeouts[jobId]) clearTimeout(mockJobTimeouts[jobId]); // Clear timeout
+         delete mockJobTimeouts[jobId];
+         throw err; // Re-throw the error
+    }
+
 
     return { jobId }; // Return the simulated job ID immediately
 }
@@ -243,30 +275,17 @@ export async function runBacktest(strategyId: string, parameters: {
  * Fetches the status of a specific backtest job.
  * TODO: Implement backend logic to check job status from the task queue or job store.
  * @param jobId The ID of the backtest job.
- * @returns A promise resolving to the job status (e.g., 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED').
+ * @returns A promise resolving to the job status ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED').
  */
-export async function getBacktestJobStatus(jobId: string): Promise<'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'> {
+export async function getBacktestJobStatus(jobId: string): Promise<JobStatus> {
      console.log(`Checking status for backtest job: ${jobId}`);
      await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 100)); // Faster status check
      simulateError(0.05); // Low chance of error checking status
 
      // --- Mock Status Logic ---
-     // Basic mock: Assume jobs started with 'backtest-' are initially running, then complete later.
-     // This relies on the setTimeout in runBacktest to eventually update the DB for getBacktestResults.
-     const strategyId = jobId.split('-')[1]; // Extract strategy ID from job ID (crude)
-     const resultExists = !!mockBacktestDb[strategyId] && mockBacktestDb[strategyId].timestamp > new Date(Date.now() - 60000).toISOString(); // Check if result updated recently
-
-     // If a recent result exists in our mock DB, assume the job completed.
-     // In a real system, you'd query the actual job status.
-     if (resultExists) {
-         return 'COMPLETED';
-     }
-
-     // Simulate pending/running - very basic random assignment for mock
-     // A real system would track this properly.
-     if(Math.random() < 0.3) return 'PENDING';
-     if(Math.random() < 0.9) return 'RUNNING'; // Higher chance of being running if not completed
-
-     return 'FAILED'; // Default mock fallback
+     // Use the in-memory mockJobStatuses store. Default to PENDING if not found.
+     const status = mockJobStatuses[jobId] || 'PENDING';
+     console.log(`Mock status for job ${jobId}: ${status}`);
+     return status;
      // -----------------------
 }
