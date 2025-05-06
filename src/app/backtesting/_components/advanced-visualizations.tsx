@@ -1,9 +1,8 @@
-// src/app/backtesting/_components/advanced-visualizations.tsx
 'use client';
 
 // Import Candlestick directly from recharts, it's used as a tag <Candlestick />
 // Removed Candlestick from this import as it's not a named export
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
 import type { BacktestTrade } from '@/services/backtesting-service'; // Import trade type
@@ -402,3 +401,4 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
         </div>
     );
 }
+
