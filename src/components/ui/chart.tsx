@@ -1,8 +1,9 @@
+
 "use client"
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts" // Keep this as the main import
-// Removed specific import for Candlestick as it's used as a component tag within ComposedChart
+import { Candlestick as RechartsCandlestick } from "recharts" // Import Candlestick with an alias
 
 import { cn } from "@/lib/utils"
 
@@ -364,4 +365,5 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
+  RechartsCandlestick as Candlestick, // Export the aliased Candlestick
 }

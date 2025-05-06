@@ -2,8 +2,8 @@
 'use client';
 
 // Import Candlestick directly from recharts, it's used as a tag <Candlestick />
-// Added Candlestick back to the import list.
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts';
+// Candlestick IS a named export from 'recharts'.
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
 import type { BacktestTrade } from '@/services/backtesting-service'; // Import trade type
@@ -112,7 +112,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
     const renderMonthlyPnlChart = () => (
         <Card>
             <CardHeader>
-                <CardTitle>Monthly P&L</CardTitle>
+                <CardTitle>Monthly P&amp;L</CardTitle>
                 <CardDescription>Profit and loss aggregated by month.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -138,7 +138,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                         </ResponsiveContainer>
                     ) : (
                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                             No trade data for monthly P&L chart.
+                             No trade data for monthly P&amp;L chart.
                          </div>
                      )}
                 </ChartContainer>
@@ -336,7 +336,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                                      {/* Candlestick series - use the component tag */}
                                      {/* Ensure correct dataKey for Candlestick */}
-                                     <Candlestick
+                                     <RechartsPrimitive.Candlestick
                                          dataKey="value" // This should match the key containing the [open, high, low, close] array
                                          fill="hsl(var(--primary))" // Base fill color
                                          stroke="hsl(var(--primary-foreground))" // Border color
@@ -403,5 +403,3 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
     );
 }
 
-
-    
