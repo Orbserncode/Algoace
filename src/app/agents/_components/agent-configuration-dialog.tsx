@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Agent, AgentConfig, getAgentConfig, updateAgentConfig, StrategyCodingAgentConfigSchema, ExecutionAgentConfigSchema, DataAgentConfigSchema, AnalysisAgentConfigSchema, BaseAgentConfigSchema } from '@/services/agents-service'; // Import schemas and services
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { JsonInput } from './json-input'; // Assuming a JsonInput component exists or is created
+import { cn } from '@/lib/utils';
 
 interface AgentConfigurationDialogProps {
   isOpen: boolean;
@@ -125,6 +126,32 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
    // --- Dynamic Form Field Rendering ---
    const renderFormField = (fieldName: string, fieldSchema: z.ZodTypeAny, fieldProps?: any) => {
         const description = fieldSchema.description || ''; // Get description from Zod schema
+
+        // Handle JSON input for fields that are z.record(z.any())
+        if (fieldSchema instanceof z.ZodRecord && fieldSchema.valueSchema instanceof z.ZodAny) {
+            return (
+                 <FormField
+                    key={fieldName}
+                    control={form.control}
+                    name={fieldName}
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>{fieldProps?.label || fieldName}</FormLabel>
+                            <FormControl>
+                                <JsonInput
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    placeholder={`Enter JSON for ${fieldName}...`}
+                                    disabled={isSaving}
+                                />
+                            </FormControl>
+                            <FormDescription>{description}</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                 />
+            );
+        }
 
         // Handle different Zod types
         if (fieldSchema instanceof z.ZodEnum) {
@@ -337,57 +364,3 @@ export function AgentConfigurationDialog({ isOpen, onOpenChange, agent, onConfig
     </Dialog>
   );
 }
-
-
-// Helper component for JSON input (basic example)
-interface JsonInputProps {
-    value?: Record<string, any>;
-    onChange: (value: Record<string, any> | undefined) => void;
-    placeholder?: string;
-    disabled?: boolean;
-    className?: string;
-}
-
-function JsonInput({ value, onChange, placeholder, disabled, className }: JsonInputProps) {
-    const [textValue, setTextValue] = useState(() => value ? JSON.stringify(value, null, 2) : '');
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        // Update text area if the external value changes
-        setTextValue(value ? JSON.stringify(value, null, 2) : '');
-    }, [value]);
-
-    const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newText = event.target.value;
-        setTextValue(newText);
-        try {
-            if (newText.trim() === '') {
-                onChange(undefined); // Clear value if empty
-                setError(null);
-            } else {
-                const parsed = JSON.parse(newText);
-                onChange(parsed);
-                setError(null);
-            }
-        } catch (e) {
-            setError("Invalid JSON format.");
-            // Optionally call onChange with undefined or keep last valid value
-            // onChange(undefined);
-        }
-    };
-
-    return (
-        <div className="w-full">
-            <Textarea
-                value={textValue}
-                onChange={handleChange}
-                placeholder={placeholder || 'Enter JSON...'}
-                disabled={disabled}
-                className={cn("font-mono text-xs min-h-[100px]", className, error && "border-destructive")}
-            />
-            {error && <p className="text-xs text-destructive mt-1">{error}</p>}
-        </div>
-    );
-}
-
-    
