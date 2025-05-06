@@ -1,245 +1,337 @@
 // src/services/settings-service.ts
 
 /**
- * @fileOverview Mock service functions for managing application settings,
- * including LLM providers, broker configurations, and trading settings.
- * Replace mocks with actual backend API calls and database interactions.
+ * @fileOverview Service functions for managing application settings.
+ * Replace mock implementations with actual backend interactions.
  */
 
-// --- LLM Provider Types ---
-type LlmProviderKey = 'google' | 'openai' | 'anthropic' | 'groq' | 'local';
+import { z } from 'zod'; // For potential schema validation if needed
 
-export interface LlmConfig {
-    providerId?: string; // Optional: Exists for saved configs
-    providerType: LlmProviderKey;
-    apiKey?: string;
-    baseUrl?: string;
-    modelName?: string;
+// Define types used in the settings forms
+// Should align with the Zod schemas in the components
+
+// LLM Provider type (align with credentials form schema)
+export interface LLMProviderConfig {
+  id?: string;
+  providerType: "google" | "openai" | "anthropic" | "groq" | "local";
+  apiKey?: string;
+  apiUrl?: string;
 }
 
-// --- Broker Types ---
-type BrokerKey = 'alpaca' | 'interactive_brokers' | 'tradier' | 'coinbase';
-
+// Broker Config type (align with credentials form schema - using a generic version for mock)
 export interface BrokerConfig {
-    type: BrokerKey;
-    apiKey?: string;
-    apiSecret?: string;
-    accountNumber?: string;
-    host?: string;
-    port?: string;
-    paperTrading?: boolean;
-    // Include providerId if managing multiple configs per type
-    // providerId?: string;
+    brokerType: "alpaca" | "interactive_brokers" | "coinbase" | "kraken" | "binance" | "mock";
+    [key: string]: any; // Allow other properties like apiKey, apiSecret, paperTrading etc.
 }
 
-// --- Trading Settings / AI Config Types ---
-export interface AiConfigRecommendation {
+// Trading Settings type (align with trading settings form schema)
+export interface TradingSettings {
+    defaultRiskPerTrade?: number;
+    defaultRiskManagement?: "user_defined" | "ai_managed";
+    maxPortfolioDrawdown?: number;
+    maxPortfolioDrawdownManagement?: "user_defined" | "ai_managed";
+    defaultLeverage?: number;
+    leverageManagement?: "user_defined" | "ai_managed";
+    defaultTrailingStopPercent?: number;
+    trailingStopManagement?: "user_defined" | "ai_managed";
+    allowedTradeTypes?: ("buy" | "sell")[];
+    allowedTradingMethods?: ("spot" | "futures" | "options")[];
+    allowedAssetTypes?: ("stock" | "crypto" | "forex" | "etf")[];
+    allowedCategories?: string;
+    preferredMarkets?: string;
+}
+
+// Saved Configuration type (for AI suggestions and history)
+export interface SavedConfig {
     id: string;
     name: string;
-    generatedAt: string; // ISO Date string
-    reason: string; // Why the config was recommended
-    parameters: Record<string, any>; // The actual recommended settings
-}
-
-export interface StoredTradingConfig {
-    id: string;
-    name: string;
-    savedAt: string; // ISO Date string
-    parameters: Record<string, any>; // The saved settings
-    associatedStrategyId?: string; // Which strategy it was used with (optional)
-    performance?: number; // PnL % achieved with this config (optional)
-    isArchived?: boolean;
+    description?: string;
+    createdAt: string; // ISO date string
+    configData: Record<string, any>; // The actual configuration parameters (YAML/JSON parsed)
+    source: 'AI-Generated' | 'User-Saved';
+    status: 'Active' | 'Archived';
+    strategyName?: string; // Optional: Name of strategy used with this config
+    performanceSummary?: string; // Optional: Brief summary of performance
 }
 
 
-// --- Mock Data Store ---
-let mockLlmConfigs: LlmConfig[] = [
-    { providerId: 'llm-google-1', providerType: 'google', apiKey: 'EXISTING_GOOGLE_KEY_******' },
-    { providerId: 'llm-local-1', providerType: 'local', baseUrl: 'http://localhost:11434', modelName: 'llama3' },
-];
+// --- Mock Data (Replace with actual backend storage/retrieval) ---
 
-let mockBrokerConfig: BrokerConfig | null = {
-    type: 'alpaca',
-    apiKey: 'EXISTING_ALPACA_KEY_******',
-    apiSecret: 'EXISTING_ALPACA_SECRET_******',
-    paperTrading: true,
-}; // Assuming only one broker config active at a time for simplicity
-
-let mockAiRecommendations: AiConfigRecommendation[] = [
-    { id: 'rec-001', name: 'Volatile Market Risk Adjustment', generatedAt: new Date(Date.now() - 86400000).toISOString(), reason: 'High VIX detected', parameters: { defaultRiskPerTrade: 0.5, maxPortfolioDrawdown: 15 } },
-    { id: 'rec-002', name: 'Bullish Crypto Leverage Increase', generatedAt: new Date(Date.now() - 3600000).toISOString(), reason: 'Strong BTC uptrend signal', parameters: { defaultLeverage: 20 } },
-];
-
-let mockStoredConfigs: StoredTradingConfig[] = [
-    { id: 'cfg-hist-001', name: 'Q1 2024 Conservative', savedAt: '2024-04-01T10:00:00Z', parameters: { defaultRiskPerTrade: 0.8, maxPortfolioDrawdown: 18, defaultLeverage: 5 }, associatedStrategyId: 'strat-001', performance: 5.2, isArchived: false },
-    { id: 'cfg-hist-002', name: 'Dec 2023 Aggressive Crypto', savedAt: '2024-01-05T10:00:00Z', parameters: { defaultRiskPerTrade: 2.0, maxPortfolioDrawdown: 25, defaultLeverage: 25 }, associatedStrategyId: 'strat-003', performance: 15.8, isArchived: false },
-    { id: 'cfg-hist-003', name: 'Old Test Config', savedAt: '2023-11-15T10:00:00Z', parameters: { defaultRiskPerTrade: 1.0, maxPortfolioDrawdown: 20 }, isArchived: true },
-];
-
-// --- Utility Functions ---
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-const simulateError = (probability = 0.1) => {
-    if (Math.random() < probability) {
-        throw new Error("Simulated backend service error.");
-    }
+let mockCredentials = {
+    llmProviders: [
+        { id: 'llm-1', providerType: 'google', apiKey: 'EXISTING_GOOGLE_KEY_******' },
+    ] as LLMProviderConfig[],
+    brokerConfig: {
+        brokerType: 'alpaca',
+        apiKey: 'EXISTING_ALPACA_KEY_******',
+        apiSecret: 'EXISTING_ALPACA_SECRET_******',
+        paperTrading: true
+    } as BrokerConfig | undefined,
 };
 
-// --- Mock Service Functions ---
+let mockTradingSettings: TradingSettings = {
+    defaultRiskPerTrade: 1,
+    defaultRiskManagement: "user_defined",
+    maxPortfolioDrawdown: 20,
+    maxPortfolioDrawdownManagement: "user_defined",
+    preferredMarkets: "NYSE, NASDAQ",
+    defaultLeverage: 1,
+    leverageManagement: "user_defined",
+    allowedTradeTypes: ["buy", "sell"],
+    allowedTradingMethods: ["spot"],
+    allowedAssetTypes: ["stock", "etf"],
+    allowedCategories: "Tech, Healthcare",
+};
 
-// == LLM Providers ==
+let mockSavedConfigs: SavedConfig[] = [
+     { id: 'cfg-ai-1', name: 'AI Aggressive Growth (July)', createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), source: 'AI-Generated', status: 'Active', configData: { defaultRiskPerTrade: 2.5, defaultLeverage: 10, defaultTrailingStopPercent: 1.5 }, strategyName: 'Momentum Burst', performanceSummary: '+5.2% last run' },
+     { id: 'cfg-ai-2', name: 'AI Low Volatility (July)', createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), source: 'AI-Generated', status: 'Active', configData: { defaultRiskPerTrade: 0.8, maxPortfolioDrawdown: 8 }, strategyName: 'Mean Reversion Scalper', performanceSummary: '+1.1% last run' },
+     { id: 'cfg-user-1', name: 'My Conservative Setup', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), source: 'User-Saved', status: 'Active', configData: { defaultRiskPerTrade: 0.5, maxPortfolioDrawdown: 10, allowedAssetTypes: ['stock', 'etf'] } },
+     { id: 'cfg-old-1', name: 'Old Crypto Config', createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), source: 'User-Saved', status: 'Archived', configData: { defaultRiskPerTrade: 3, defaultLeverage: 20, allowedAssetTypes: ['crypto'] } },
+];
 
-export async function getLlmConfigs(): Promise<LlmConfig[]> {
-    console.log("SERVICE: Fetching LLM configurations...");
-    await delay(300);
-    // simulateError(0.05);
-    console.log("SERVICE: Returning", mockLlmConfigs.length, "LLM configs.");
-    return [...mockLlmConfigs]; // Return copy
+
+// --- Helper Functions ---
+
+// Simulate potential API/DB errors
+const simulateError = (probability = 0.1): void => {
+    if (Math.random() < probability) {
+        console.warn(`Simulating a service error (probability: ${probability})`);
+        throw new Error("Simulated settings service error.");
+    }
 }
 
-export async function saveLlmConfig(config: LlmConfig): Promise<LlmConfig> {
-    console.log("SERVICE: Saving LLM configuration:", config.providerType, config.providerId);
-    await delay(500);
+const simulateDelay = (min = 200, max = 500): Promise<void> => {
+    return new Promise(resolve => setTimeout(resolve, min + Math.random() * (max - min)));
+}
+
+
+// --- Service Functions ---
+
+/**
+ * Fetches the current credentials (LLM providers and Broker config).
+ * NOTE: In a real app, sensitive data like API keys should NOT be sent to the frontend.
+ * The backend should store them securely and the frontend might only get metadata (e.g., provider types configured).
+ * This mock function returns redacted data for demonstration.
+ */
+export async function getCredentials(): Promise<{ llmProviders: LLMProviderConfig[], brokerConfig?: BrokerConfig }> {
+    console.log("SERVICE: Fetching credentials (mock, redacted)");
+    await simulateDelay();
+    // Return copies to prevent direct mutation
+    return {
+        llmProviders: mockCredentials.llmProviders.map(p => ({ ...p, apiKey: p.apiKey ? '******' : undefined })),
+        brokerConfig: mockCredentials.brokerConfig ? { ...mockCredentials.brokerConfig, apiKey: '******', apiSecret: '******' } : undefined,
+    };
+}
+
+/**
+ * Saves updated credentials to the backend.
+ * The backend must handle secure storage (e.g., updating .env variables or a secure database).
+ * @param credentials The credentials object containing potentially updated LLM providers and broker config.
+ */
+export async function saveCredentials(credentials: { llmProviders?: LLMProviderConfig[], brokerConfig?: BrokerConfig }): Promise<void> {
+    console.log("SERVICE: Saving credentials (mock)");
+    await simulateDelay(500, 1000);
     simulateError(0.1);
 
-    // Assign ID if it's a new config
-    if (!config.providerId) {
-        config.providerId = `llm-${config.providerType}-${Date.now().toString().slice(-4)}`;
+    // --- Backend actions needed here: ---
+    // 1. Receive the credentials data.
+    // 2. Validate the input.
+    // 3. **Carefully** update the secure configuration source (e.g., .env file, secret manager, database).
+    //    - Only update fields that were actually provided in the request.
+    //    - Handle adding/removing LLM providers.
+    //    - NEVER log the actual secret keys.
+    // 4. Restarting the backend service might be required for .env changes to take effect.
+    // -------------------------------------
+
+    // Mock update: Merge new data (be careful with merging sensitive fields in real app)
+    if (credentials.llmProviders) {
+        // Basic merge/replace logic for mock
+        mockCredentials.llmProviders = credentials.llmProviders.map((p, index) => ({
+             id: p.id || `llm-${Date.now()}-${index}`, // Assign ID if new
+             ...p
+        }));
+    }
+    if (credentials.brokerConfig !== undefined) { // Allow clearing broker config
+         mockCredentials.brokerConfig = credentials.brokerConfig;
     }
 
-    // Update or add to mock store
-    const existingIndex = mockLlmConfigs.findIndex(c => c.providerId === config.providerId);
-    if (existingIndex > -1) {
-        mockLlmConfigs[existingIndex] = config;
-        console.log("SERVICE: Updated existing LLM config:", config.providerId);
-    } else {
-        mockLlmConfigs.push(config);
-        console.log("SERVICE: Added new LLM config:", config.providerId);
-    }
-
-    // In a real backend:
-    // 1. Validate the input.
-    // 2. Encrypt sensitive fields (apiKey).
-    // 3. Save to database or secure config store.
-    // 4. Return the saved config (potentially omitting sensitive fields).
-
-    return { ...config }; // Return a copy
+    console.log("SERVICE: Mock credentials updated.");
 }
 
-export async function deleteLlmConfig(providerId: string): Promise<void> {
-    console.log("SERVICE: Deleting LLM configuration:", providerId);
-    await delay(400);
+
+/**
+ * Tests the connection for a given LLM provider configuration.
+ * @param providerConfig The configuration of the LLM provider to test.
+ * @returns A promise resolving to an object with a success message or throwing an error.
+ */
+export async function testLLMConnection(providerConfig: LLMProviderConfig): Promise<{ success: boolean; message?: string }> {
+    console.log(`SERVICE: Testing LLM connection for ${providerConfig.providerType} (mock)`);
+    await simulateDelay(400, 800);
+
+    // --- Backend actions needed here: ---
+    // 1. Based on providerType, use the apiKey/apiUrl to make a simple test request
+    //    (e.g., list models, perform a small completion).
+    // 2. Handle API-specific errors and authentication issues.
+    // -------------------------------------
+
+    // Mock success/failure
+    const shouldFail = providerConfig.providerType === 'anthropic' || Math.random() < 0.15; // Example: Anthropic fails, 15% random fail
+    if (shouldFail) {
+        console.error(`SERVICE: Mock LLM connection test FAILED for ${providerConfig.providerType}`);
+        throw new Error(`Connection failed. Check API key or URL.`);
+    }
+
+    console.log(`SERVICE: Mock LLM connection test SUCCEEDED for ${providerConfig.providerType}`);
+    return { success: true, message: `Successfully listed models.` }; // Example success message
+}
+
+/**
+ * Tests the connection for a given Broker configuration.
+ * @param brokerConfig The configuration of the broker to test.
+ * @returns A promise resolving to an object with a success message or throwing an error.
+ */
+export async function testBrokerConnection(brokerConfig: BrokerConfig): Promise<{ success: boolean; message?: string }> {
+    console.log(`SERVICE: Testing Broker connection for ${brokerConfig.brokerType} (mock)`);
+    await simulateDelay(500, 1000);
+
+    // --- Backend actions needed here: ---
+    // 1. Based on brokerType, instantiate the appropriate Lumibot broker client (or other library).
+    // 2. Use the provided credentials (apiKey, secret, account details etc.).
+    // 3. Attempt a simple authenticated request (e.g., get_account_details, check_connection).
+    // 4. Handle API-specific errors and authentication issues.
+    // -------------------------------------
+
+     // Mock success/failure
+    const shouldFail = brokerConfig.brokerType === 'binance' || Math.random() < 0.2; // Example: Binance fails, 20% random fail
+    if (shouldFail) {
+        console.error(`SERVICE: Mock Broker connection test FAILED for ${brokerConfig.brokerType}`);
+        throw new Error(`Connection failed. Check credentials or broker status.`);
+    }
+
+    console.log(`SERVICE: Mock Broker connection test SUCCEEDED for ${brokerConfig.brokerType}`);
+    return { success: true, message: `Account details fetched successfully.` }; // Example success message
+}
+
+
+/**
+ * Fetches the current trading settings.
+ */
+export async function getTradingSettings(): Promise<TradingSettings> {
+    console.log("SERVICE: Fetching trading settings (mock)");
+    await simulateDelay();
+    return { ...mockTradingSettings }; // Return a copy
+}
+
+/**
+ * Saves updated trading settings to the backend.
+ * @param settings The updated trading settings.
+ */
+export async function saveTradingSettings(settings: TradingSettings): Promise<void> {
+    console.log("SERVICE: Saving trading settings (mock)");
+    await simulateDelay(300, 600);
     simulateError(0.05);
-    const initialLength = mockLlmConfigs.length;
-    mockLlmConfigs = mockLlmConfigs.filter(c => c.providerId !== providerId);
-    if (mockLlmConfigs.length === initialLength) {
-         console.warn("SERVICE: LLM config not found for deletion:", providerId);
-        // Optionally throw an error if not found, depending on desired behavior
-        // throw new Error("Configuration not found.");
-    } else {
-         console.log("SERVICE: Deleted LLM config:", providerId);
-    }
-    // In a real backend: Delete from database/config store.
+
+    // --- Backend actions needed here: ---
+    // 1. Receive settings data.
+    // 2. Validate input.
+    // 3. Save to configuration source (database, config file).
+    // -------------------------------------
+
+    mockTradingSettings = { ...settings };
+    console.log("SERVICE: Mock trading settings updated.");
 }
 
-export async function testLlmConnection(config: LlmConfig): Promise<{ success: boolean; message: string }> {
-    console.log("SERVICE: Testing LLM connection:", config.providerType);
-    await delay(1000 + Math.random() * 500); // Simulate test duration
-    simulateError(0.15); // Higher chance of test failure simulation
+// --- AI Configuration Management ---
 
-    // In a real backend:
-    // 1. Use the provided config (apiKey, baseUrl, etc.) to instantiate the LLM client.
-    // 2. Make a simple test call (e.g., list models, send a short prompt).
-    // 3. Based on the response, return success or failure.
-
-    const success = Math.random() > 0.2; // 80% chance of mock success
-    const message = success
-        ? `Successfully connected to ${config.providerType === 'local' ? config.baseUrl : llmProviders[config.providerType].name}.`
-        : `Failed to connect. Check ${config.providerType === 'local' ? 'Base URL and ensure model is running' : 'API Key and provider status'}.`;
-
-    console.log(`SERVICE: LLM test result for ${config.providerType}: ${success ? 'Success' : 'Failure'}`);
-    return { success, message };
+/**
+ * Fetches pending AI configuration suggestions.
+ * In a real system, this might query a specific status in the config database.
+ */
+export async function getAIConfigSuggestions(): Promise<SavedConfig[]> {
+     console.log("SERVICE: Fetching AI config suggestions (mock)");
+     await simulateDelay(300, 700);
+     // Filter mock data for AI-generated and Active status
+     return mockSavedConfigs.filter(c => c.source === 'AI-Generated' && c.status === 'Active');
 }
 
-// == Broker Configuration ==
+/**
+ * Fetches all saved configurations (user and AI, excluding archived by default).
+ */
+export async function getSavedConfigs(includeArchived = false): Promise<SavedConfig[]> {
+     console.log(`SERVICE: Fetching saved configs (includeArchived: ${includeArchived}) (mock)`);
+     await simulateDelay(400, 800);
+     const filtered = includeArchived
+         ? [...mockSavedConfigs]
+         : mockSavedConfigs.filter(c => c.status !== 'Archived');
+    return filtered;
+}
 
-export async function saveBrokerConfig(config: BrokerConfig): Promise<void> {
-    console.log("SERVICE: Saving Broker configuration:", config.type);
-    await delay(600);
+/**
+ * Archives a specific configuration.
+ */
+export async function archiveConfig(configId: string): Promise<SavedConfig | null> {
+    console.log(`SERVICE: Archiving config ${configId} (mock)`);
+    await simulateDelay();
+    simulateError(0.05);
+    const index = mockSavedConfigs.findIndex(c => c.id === configId);
+    if (index === -1) return null;
+    mockSavedConfigs[index].status = 'Archived';
+    console.log(`SERVICE: Config ${configId} archived.`);
+    return { ...mockSavedConfigs[index] };
+}
+
+/**
+ * Deletes a specific configuration permanently.
+ */
+export async function deleteConfig(configId: string): Promise<boolean> {
+    console.log(`SERVICE: Deleting config ${configId} (mock)`);
+    await simulateDelay();
     simulateError(0.1);
-
-    // In a real backend:
-    // 1. Validate input.
-    // 2. Encrypt sensitive fields (apiKey, apiSecret).
-    // 3. Save to a secure configuration store or database (likely replacing the previous config).
-    // IMPORTANT: Handle this securely, e.g., updating environment variables requires restart or specific libraries.
-
-    mockBrokerConfig = { ...config }; // Replace mock config
-    console.log("SERVICE: Broker config updated (mock). Restart might be needed in real app.");
-}
-
-export async function testBrokerConnection(config: BrokerConfig): Promise<{ success: boolean; message: string }> {
-    console.log("SERVICE: Testing Broker connection:", config.type, config.paperTrading ? '(Paper)' : '(Live)');
-    await delay(1200 + Math.random() * 600); // Simulate test duration
-    simulateError(0.2); // Higher chance of test failure simulation
-
-    // In a real backend:
-    // 1. Use the provided credentials to instantiate the broker client (e.g., Lumibot Broker).
-    // 2. Make a test call (e.g., get_account(), get_clock()).
-    // 3. Based on the response/error, return success or failure.
-
-     const success = Math.random() > 0.25; // 75% chance of mock success
-     const message = success
-         ? `Successfully connected to ${brokers[config.type].name} ${config.paperTrading ? '(Paper)' : ''}.`
-         : `Failed to connect to ${brokers[config.type].name}. Check credentials and connection details.`;
-
-    console.log(`SERVICE: Broker test result for ${config.type}: ${success ? 'Success' : 'Failure'}`);
-    return { success, message };
-}
-
-
-// == Trading Settings / AI Configs ==
-
-export async function getAiConfigRecommendations(): Promise<AiConfigRecommendation[]> {
-    console.log("SERVICE: Fetching AI config recommendations...");
-    await delay(400);
-    // Simulate new recommendations appearing sometimes
-    if (Math.random() < 0.1) {
-         mockAiRecommendations.push({
-             id: `rec-${Date.now().toString().slice(-4)}`,
-             name: `Dynamic Rec ${mockAiRecommendations.length + 1}`,
-             generatedAt: new Date().toISOString(),
-             reason: 'Simulated new event',
-             parameters: { defaultRiskPerTrade: Math.random().toFixed(1) }
-         })
+    const initialLength = mockSavedConfigs.length;
+    mockSavedConfigs = mockSavedConfigs.filter(c => c.id !== configId);
+    const deleted = mockSavedConfigs.length < initialLength;
+     if (deleted) {
+        console.log(`SERVICE: Config ${configId} deleted.`);
+    } else {
+         console.warn(`SERVICE: Config ${configId} not found for deletion.`);
     }
-    console.log("SERVICE: Returning", mockAiRecommendations.length, "AI recs.");
-    return [...mockAiRecommendations];
+    return deleted;
 }
 
-export async function getStoredConfigs(): Promise<StoredTradingConfig[]> {
-    console.log("SERVICE: Fetching stored trading configs...");
-    await delay(350);
-    console.log("SERVICE: Returning", mockStoredConfigs.length, "stored configs.");
-    return [...mockStoredConfigs];
-}
-
-export async function deleteStoredConfig(configId: string): Promise<void> {
-     console.log("SERVICE: Deleting stored trading config:", configId);
-     await delay(300);
+/**
+ * Loads/applies an accepted configuration.
+ * In a real app, this would update the *active* trading parameters used by execution agents.
+ * This might involve updating the main trading settings or a specific agent's config.
+ * @param config The configuration to apply.
+ */
+export async function applyConfiguration(config: SavedConfig): Promise<void> {
+     console.log(`SERVICE: Applying configuration ${config.id} (${config.name}) (mock)`);
+     await simulateDelay(300, 500);
      simulateError(0.05);
-     const initialLength = mockStoredConfigs.length;
-     mockStoredConfigs = mockStoredConfigs.filter(c => c.id !== configId);
-     if (mockStoredConfigs.length === initialLength) {
-         console.warn("SERVICE: Stored config not found for deletion:", configId);
-         throw new Error("Configuration not found."); // Throw error if not found
-     } else {
-          console.log("SERVICE: Deleted stored config:", configId);
-     }
-     // In real backend: Delete from database.
-}
 
-// TODO: Add functions for:
-// - Saving current form settings as a new StoredTradingConfig
-// - Accepting an AIConfigRecommendation (which likely saves it as a StoredTradingConfig and potentially activates it)
-// - Archiving/Unarchiving StoredTradingConfig
-// - Loading/Applying a StoredTradingConfig to the active settings
+     // --- Backend actions needed here: ---
+     // 1. Fetch the full config data if not already passed.
+     // 2. Update the active configuration source (e.g., main settings in DB, agent-specific settings).
+     // 3. Potentially notify running agents to reload their configuration.
+     // -------------------------------------
+
+     // Mock: Update the main trading settings with the config data (simple merge)
+     // WARNING: This is overly simplistic. A real implementation needs careful mapping
+     // and consideration of which settings are part of a "config preset".
+     mockTradingSettings = {
+         ...mockTradingSettings,
+         ...config.configData, // Overwrite with config data
+         // Ensure management types are handled correctly if config implies AI management
+     };
+
+     console.log(`SERVICE: Configuration ${config.name} applied (mock).`);
+
+     // Maybe update the status of the applied config in the DB (e.g., mark as 'Active' or remove from 'suggestions')
+     const index = mockSavedConfigs.findIndex(c => c.id === config.id);
+     if (index !== -1 && mockSavedConfigs[index].source === 'AI-Generated') {
+         // Example: Remove from suggestions list implicitly by changing status or deleting
+         // For mock, let's just log it. Real app needs DB update.
+         console.log(`SERVICE: Suggestion ${config.id} considered applied.`);
+     }
+}

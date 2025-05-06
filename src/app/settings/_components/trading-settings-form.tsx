@@ -1,7 +1,6 @@
 // src/app/settings/_components/trading-settings-form.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -18,490 +17,597 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { BrainCircuit, Eye, Upload, Download, Archive, Trash2, Loader2 } from "lucide-react"; // Added icons
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { getAiConfigRecommendations, getStoredConfigs, deleteStoredConfig } from '@/services/settings-service'; // Mock service
-import type { AiConfigRecommendation, StoredTradingConfig } from '@/services/settings-service'; // Types
+import { Lightbulb, Archive, Eye, Trash2, Loader2 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+// Placeholder service/types - replace with actual implementations
+import { saveTradingSettings, getAIConfigSuggestions, getSavedConfigs, deleteConfig, archiveConfig, type SavedConfig } from "@/services/settings-service";
+import { useState, useEffect } from "react";
 
+const managementOptions = ["user_defined", "ai_managed"] as const;
 
-// Define Zod schema for allowed trades/assets
-const allowedTradeSchema = z.object({
-    tradeType: z.array(z.enum(["buy", "sell"])).min(1, "Select at least one trade type"),
-    tradeMethod: z.array(z.enum(["spot", "futures", "options"])).min(1, "Select at least one method"),
-    assetType: z.array(z.enum(["forex", "stock", "crypto", "etf", "commodity"])).min(1, "Select at least one asset type"),
-    assetCategory: z.array(z.string()).optional().describe("Comma-separated list of allowed categories (e.g., Tech, Healthcare)"),
-});
-
-// Main form schema
 const formSchema = z.object({
-  riskManagementMode: z.enum(["manual", "ai"]).default("manual").describe("How risk parameters are managed"),
-  defaultRiskPerTrade: z.coerce.number().min(0).max(10, {message: "Risk must be between 0 and 10%"}).optional().describe("Default percentage of capital to risk per trade (manual mode)"),
-  maxPortfolioDrawdown: z.coerce.number().min(1).max(50, {message: "Max drawdown must be between 1 and 50%"}).optional().describe("Maximum allowed portfolio drawdown percentage (manual mode)"),
-  leverageManagementMode: z.enum(["manual", "ai"]).default("manual").describe("How leverage is managed"),
-  defaultLeverage: z.coerce.number().min(1).max(100).optional().describe("Default leverage to use if applicable (manual mode)"),
-  allowedTrades: allowedTradeSchema.default({ // Set default allowed trades
-      tradeType: ["buy", "sell"],
-      tradeMethod: ["spot"],
-      assetType: ["stock", "etf"],
-      assetCategory: [],
-  }),
+  // Risk Management
+  defaultRiskPerTrade: z.coerce.number().min(0).max(10, {message: "Risk must be between 0 and 10%"}).optional(),
+  defaultRiskManagement: z.enum(managementOptions).default("user_defined"),
+  maxPortfolioDrawdown: z.coerce.number().min(1).max(50, {message: "Max drawdown must be between 1 and 50%"}).optional(),
+  maxPortfolioDrawdownManagement: z.enum(managementOptions).default("user_defined"),
+
+  // Leverage
+  defaultLeverage: z.coerce.number().min(1).max(100).optional(),
+  leverageManagement: z.enum(managementOptions).default("user_defined"),
+
+  // Order Management (Example)
+  defaultTrailingStopPercent: z.coerce.number().min(0.1).max(20).optional(),
+  trailingStopManagement: z.enum(managementOptions).default("user_defined"),
+
+  // Allowed Trades
+  allowedTradeTypes: z.array(z.enum(["buy", "sell"])).default(["buy", "sell"]),
+  allowedTradingMethods: z.array(z.enum(["spot", "futures", "options"])).default(["spot"]),
+  allowedAssetTypes: z.array(z.enum(["stock", "crypto", "forex", "etf"])).default(["stock", "etf"]),
+  allowedCategories: z.string().optional().describe("Comma-separated list of allowed sectors/categories, e.g., Tech, Healthcare"),
+
+  // Preferred Markets (from previous version)
+  preferredMarkets: z.string().min(1, { message: "Specify at least one market." }).describe("Comma-separated list of preferred markets (e.g., NYSE, NASDAQ, Crypto)"),
 });
 
 type FormData = z.infer<typeof formSchema>;
-type AllowedTradeKey = keyof z.infer<typeof allowedTradeSchema>;
 
 export function TradingSettingsForm() {
-    const [aiRecommendations, setAiRecommendations] = useState<AiConfigRecommendation[]>([]);
-    const [isLoadingRecs, setIsLoadingRecs] = useState(false);
-    const [storedConfigs, setStoredConfigs] = useState<StoredTradingConfig[]>([]);
-    const [isLoadingStored, setIsLoadingStored] = useState(false);
-    const [viewingConfig, setViewingConfig] = useState<StoredTradingConfig | null>(null); // For modal/dialog
+  const [isSaving, setIsSaving] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<SavedConfig[]>([]); // Placeholder for AI suggestions
+  const [savedConfigs, setSavedConfigs] = useState<SavedConfig[]>([]); // Placeholder for saved configs
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(false); // Loading state for configs
+  const [viewingConfig, setViewingConfig] = useState<SavedConfig | null>(null); // State for viewing a specific config
 
-    const form = useForm<FormData>({
-        resolver: zodResolver(formSchema),
-        // TODO: Fetch actual trading settings from backend
-        defaultValues: {
-            riskManagementMode: "manual",
-            defaultRiskPerTrade: 1,
-            maxPortfolioDrawdown: 20,
-            leverageManagementMode: "manual",
-            defaultLeverage: 1,
-            allowedTrades: {
-                tradeType: ["buy", "sell"],
-                tradeMethod: ["spot"],
-                assetType: ["stock", "etf", "crypto"],
-                assetCategory: ["Tech", "Finance"], // Example defaults
-            },
-        },
-    });
+  // TODO: Fetch actual trading settings & configs on load
+  const form = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      defaultRiskPerTrade: 1,
+      defaultRiskManagement: "user_defined",
+      maxPortfolioDrawdown: 20,
+      maxPortfolioDrawdownManagement: "user_defined",
+      preferredMarkets: "NYSE, NASDAQ",
+      defaultLeverage: 1,
+      leverageManagement: "user_defined",
+      defaultTrailingStopPercent: undefined,
+      trailingStopManagement: "user_defined",
+      allowedTradeTypes: ["buy", "sell"],
+      allowedTradingMethods: ["spot"],
+      allowedAssetTypes: ["stock", "etf"],
+      allowedCategories: "Tech, Healthcare, Finance",
+    },
+  });
 
-     const { watch, control } = form;
-     const riskMode = watch("riskManagementMode");
-     const leverageMode = watch("leverageManagementMode");
+  // Fetch AI suggestions and saved configs (example)
+  useEffect(() => {
+    const fetchConfigs = async () => {
+        setIsLoadingConfigs(true);
+        try {
+            // Replace with actual service calls
+            const [suggestions, saved] = await Promise.all([
+                 getAIConfigSuggestions(),
+                 getSavedConfigs(),
+            ]);
+            setAiSuggestions(suggestions);
+            setSavedConfigs(saved);
+        } catch (error) {
+             toast({ title: "Error", description: "Could not load AI suggestions or saved configurations.", variant: "destructive" });
+        } finally {
+            setIsLoadingConfigs(false);
+        }
+    };
+    fetchConfigs();
+   }, []);
 
-    // Fetch AI recommendations and stored configs on mount
-    useEffect(() => {
-        const loadInitialData = async () => {
-            setIsLoadingRecs(true);
-            setIsLoadingStored(true);
-            try {
-                const [recs, stored] = await Promise.all([
-                    getAiConfigRecommendations(),
-                    getStoredConfigs(),
-                ]);
-                setAiRecommendations(recs);
-                setStoredConfigs(stored);
-            } catch (error) {
-                toast({ title: "Error Loading Data", description: "Could not load AI recommendations or stored configs.", variant: "destructive" });
-            } finally {
-                setIsLoadingRecs(false);
-                setIsLoadingStored(false);
-            }
-        };
-        loadInitialData();
-    }, []);
 
-    function onSubmit(values: FormData) {
-        console.log("Trading settings submitted:", values);
-        // TODO: Implement saving trading settings to backend config/database
+  async function onSubmit(values: FormData) {
+    setIsSaving(true);
+    console.log("Trading settings submitted:", values);
+    try {
+        // TODO: Implement saving trading settings via service
+        await saveTradingSettings(values);
         toast({
             title: "Settings Saved",
             description: "Your global trading settings have been updated.",
         });
+    } catch (error: any) {
+         toast({
+             title: "Error Saving Settings",
+             description: `Could not save trading settings: ${error.message || 'Unknown error'}`,
+             variant: "destructive",
+         });
+    } finally {
+        setIsSaving(false);
     }
+  }
 
-     const handleLoadConfig = (config: StoredTradingConfig) => {
-        // TODO: Implement loading config logic - this might override form values
-        // Example: form.reset(config.parameters); // Assuming parameters match form structure
-        toast({ title: "Load Config", description: `Simulating loading config: ${config.name}` });
-        console.log("Load config:", config.id);
-        // Potentially close a modal if viewingConfig was set
-        setViewingConfig(null);
-    }
+   // --- AI Config Management Handlers (Placeholders) ---
+   const handleViewConfig = (config: SavedConfig) => {
+        setViewingConfig(config);
+        // TODO: Open a modal or drawer to display the config details (YAML/JSON)
+        console.log("Viewing config:", config.id, config.name);
+        // For now, just log it
+        toast({title: "View Config", description: `Displaying details for ${config.name} (implementation pending).`});
+    };
 
-     const handleArchiveConfig = async (configId: string) => {
-         // TODO: Implement archiving logic via settings-service
-         toast({ title: "Archive Config", description: `Simulating archiving config ID: ${configId}` });
-         console.log("Archive config:", configId);
-         // Update local state on success
-         // setStoredConfigs(prev => prev.map(c => c.id === configId ? {...c, isArchived: true} : c));
-     }
+   const handleAcceptConfig = (config: SavedConfig) => {
+        // TODO: Implement logic to apply the AI config.
+        // This might involve updating the form values or sending a specific request to the backend.
+        console.log("Accepting config:", config.id);
+        toast({ title: "Config Accepted", description: `Applying configuration ${config.name} (implementation pending).` });
+        // Example: Update form state (needs careful mapping)
+        // form.reset(mapConfigToFormData(config.configData));
+        // Remove from suggestions list after accepting
+        setAiSuggestions(prev => prev.filter(s => s.id !== config.id));
+    };
 
-     const handleDeleteConfig = async (configId: string) => {
-        // TODO: Implement deletion logic via settings-service
+    const handleDeleteConfigAction = async (configId: string) => {
+        console.log("Deleting config:", configId);
         try {
-             await deleteStoredConfig(configId); // Call mock service
-             toast({ title: "Config Deleted", description: `Configuration ${configId} deleted.` });
-             setStoredConfigs(prev => prev.filter(c => c.id !== configId));
-              if (viewingConfig?.id === configId) {
-                setViewingConfig(null); // Close modal if viewing deleted config
-              }
-        } catch (error) {
-             toast({ title: "Error Deleting Config", description: error instanceof Error ? error.message : "Failed to delete.", variant: "destructive"});
+            await deleteConfig(configId);
+            setSavedConfigs(prev => prev.filter(c => c.id !== configId));
+            toast({ title: "Config Deleted", description: "Configuration permanently deleted." });
+        } catch (error:any) {
+            toast({ title: "Error", description: `Failed to delete config: ${error.message}`, variant: "destructive" });
         }
-    }
+    };
 
-     // Helper for rendering checkbox groups
-     const renderCheckboxGroup = (field: AllowedTradeKey, options: string[]) => {
-        const fieldName = `allowedTrades.${field}`;
-        return (
+     const handleArchiveConfigAction = async (configId: string) => {
+        console.log("Archiving config:", configId);
+         try {
+            await archiveConfig(configId);
+             // Update local state to reflect archive status (or refetch)
+             setSavedConfigs(prev => prev.map(c => c.id === configId ? { ...c, status: 'Archived' } : c));
+            toast({ title: "Config Archived", description: "Configuration archived." });
+        } catch (error: any) {
+            toast({ title: "Error", description: `Failed to archive config: ${error.message}`, variant: "destructive" });
+        }
+    };
+    // --- End Placeholder Handlers ---
+
+
+  // Helper function to render a setting with AI/User management toggle
+  const renderManagedSetting = (
+        name: keyof FormData,
+        label: string,
+        description: string,
+        inputType: "number" | "text" = "number",
+        inputProps: React.ComponentProps<typeof Input> = {}
+    ) => {
+      const managementFieldName = `${name}Management` as keyof FormData; // Assumes naming convention
+      const isAiManaged = form.watch(managementFieldName) === 'ai_managed';
+
+      return (
+         <div className="space-y-4 rounded-md border p-4">
+            <div className="flex items-center justify-between">
+                 <FormLabel>{label}</FormLabel>
+                 <FormField
+                    control={form.control}
+                    name={managementFieldName}
+                    render={({ field }) => (
+                        <FormItem className="flex items-center space-x-2">
+                             <Select onValueChange={field.onChange} value={field.value} disabled={isSaving}>
+                                <FormControl>
+                                    <SelectTrigger className="h-8 w-[140px] text-xs">
+                                        <SelectValue placeholder="Manage via..." />
+                                    </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    <SelectItem value="user_defined">User Defined</SelectItem>
+                                    <SelectItem value="ai_managed">AI Managed</SelectItem>
+                                </SelectContent>
+                            </Select>
+                             <FormMessage className="text-xs" />
+                        </FormItem>
+                    )}
+                />
+            </div>
              <FormField
-                control={control}
-                name={fieldName as any} // Need to cast for nested array field
-                render={() => (
-                    <FormItem className="space-y-3">
-                        <FormLabel className="text-base capitalize">{field.replace(/([A-Z])/g, ' $1')}</FormLabel>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {options.map((item) => (
-                                <FormField
-                                    key={item}
-                                    control={control}
-                                    name={fieldName as any}
-                                    render={({ field: checkboxField }) => {
-                                    return (
-                                        <FormItem
-                                            key={item}
-                                            className="flex flex-row items-start space-x-3 space-y-0"
-                                        >
-                                            <FormControl>
-                                                <Checkbox
-                                                    checked={checkboxField.value?.includes(item)}
-                                                    onCheckedChange={(checked) => {
-                                                        return checked
-                                                        ? checkboxField.onChange([...(checkboxField.value || []), item])
-                                                        : checkboxField.onChange(
-                                                            checkboxField.value?.filter(
-                                                                (value: string) => value !== item
-                                                            )
-                                                            )
-                                                    }}
-                                                />
-                                            </FormControl>
-                                            <FormLabel className="text-sm font-normal capitalize">
-                                                {item}
-                                            </FormLabel>
-                                        </FormItem>
-                                    )
-                                    }}
-                                />
-                            ))}
-                        </div>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
+                 control={form.control}
+                 name={name}
+                 render={({ field }) => (
+                     <FormItem>
+                        <FormControl>
+                            <Input
+                                type={inputType}
+                                placeholder={isAiManaged ? "AI Controlled" : `e.g., ${inputProps.placeholder || 'value'}`}
+                                {...field}
+                                value={isAiManaged ? "" : field.value ?? ""} // Clear value if AI managed
+                                onChange={(e) => {
+                                     if (!isAiManaged) {
+                                         // Use coerce number for number inputs
+                                         field.onChange(inputType === 'number' ? Number(e.target.value) || undefined : e.target.value);
+                                     }
+                                 }}
+                                disabled={isSaving || isAiManaged}
+                                {...inputProps}
+                             />
+                         </FormControl>
+                         <FormDescription>{description}</FormDescription>
+                         <FormMessage />
+                     </FormItem>
+                 )}
+             />
+         </div>
         );
-    }
+  };
 
   return (
-    <>
-      {/* AI Recommendation Alert */}
-      {isLoadingRecs && (
-           <Alert className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                <AlertTitle>Loading AI Recommendations...</AlertTitle>
-           </Alert>
-      )}
-      {!isLoadingRecs && aiRecommendations.length > 0 && (
-          <Alert className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-            <BrainCircuit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <AlertTitle>AI Configuration Recommendations Available!</AlertTitle>
-            <AlertDescription>
-              AI agents have generated new trading configurations based on recent analysis.
-              <Button variant="link" size="sm" className="p-0 h-auto ml-2 text-blue-600 dark:text-blue-400" onClick={() => document.getElementById('ai-configs')?.scrollIntoView({ behavior: 'smooth' })}>
-                View Recommendations
-              </Button>
-            </AlertDescription>
-          </Alert>
-      )}
+      <div className="space-y-8">
+         {/* AI Configuration Suggestion Feed */}
+        {aiSuggestions.length > 0 && (
+             <Alert variant="default" className="border-accent">
+                <Lightbulb className="h-4 w-4 !text-accent" />
+                <AlertTitle>AI Configuration Suggestions Available!</AlertTitle>
+                <AlertDescription>
+                    The AI has generated new configuration suggestions based on recent analysis.
+                     <ScrollArea className="mt-2 max-h-[150px] pr-4">
+                         <ul className="space-y-2">
+                            {aiSuggestions.map(suggestion => (
+                                <li key={suggestion.id} className="text-xs flex justify-between items-center p-2 rounded bg-accent/10">
+                                    <span>{suggestion.name} (Generated: {new Date(suggestion.createdAt).toLocaleDateString()})</span>
+                                    <div className="space-x-1">
+                                         <Button size="xs" variant="ghost" onClick={() => handleViewConfig(suggestion)}>View</Button>
+                                         <Button size="xs" variant="outline" onClick={() => handleAcceptConfig(suggestion)}>Accept & Load</Button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </ScrollArea>
+                </AlertDescription>
+            </Alert>
+        )}
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-2xl">
 
-           {/* Risk Management Section */}
-           <Card>
+        <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+
+             {/* Risk Management Section */}
+             <Card>
+                 <CardHeader>
+                     <CardTitle>Risk Management</CardTitle>
+                     <CardDescription>Define risk parameters for your trading activities.</CardDescription>
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                    {renderManagedSetting(
+                        "defaultRiskPerTrade",
+                        "Default Risk Per Trade (%)",
+                        "Percentage of capital to risk on a single trade by default.",
+                        "number",
+                        { step: "0.1", min: "0", max: "10", placeholder: "1.0" }
+                     )}
+                     {renderManagedSetting(
+                        "maxPortfolioDrawdown",
+                        "Max Portfolio Drawdown (%)",
+                        "Maximum acceptable loss from the portfolio peak before intervention (e.g., pausing trading).",
+                        "number",
+                        { step: "0.5", min: "1", max: "50", placeholder: "20" }
+                     )}
+                 </CardContent>
+             </Card>
+
+              {/* Leverage Section */}
+             <Card>
+                 <CardHeader>
+                     <CardTitle>Leverage</CardTitle>
+                     <CardDescription>Configure default leverage settings (if supported by broker).</CardDescription>
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                    {renderManagedSetting(
+                        "defaultLeverage",
+                        "Default Leverage",
+                        "Default leverage multiplier to apply (e.g., 10 for 10x). Set to 1 for no leverage.",
+                        "number",
+                        { step: "1", min: "1", max: "100", placeholder: "1" }
+                     )}
+                 </CardContent>
+             </Card>
+
+             {/* Order Management Section */}
+             <Card>
+                 <CardHeader>
+                     <CardTitle>Order Management</CardTitle>
+                     <CardDescription>Define default parameters for order execution.</CardDescription>
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                     {renderManagedSetting(
+                        "defaultTrailingStopPercent",
+                        "Default Trailing Stop (%)",
+                        "Optional: Set a default trailing stop loss percentage from the peak profit.",
+                        "number",
+                        { step: "0.1", min: "0.1", max: "20", placeholder: "2.0" }
+                     )}
+                     {/* Add more order settings like default order type, time-in-force etc. */}
+                 </CardContent>
+             </Card>
+
+
+            {/* Allowed Trades Section */}
+            <Card>
                 <CardHeader>
-                    <CardTitle>Risk Management</CardTitle>
-                    <CardDescription>Configure how trading risk is managed across strategies.</CardDescription>
+                    <CardTitle>Allowed Trades</CardTitle>
+                     <CardDescription>Define the scope of assets and trade types permitted.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                     {/* Trade Types */}
                      <FormField
-                        control={control}
-                        name="riskManagementMode"
+                        control={form.control}
+                        name="allowedTradeTypes"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Risk Parameter Mode</FormLabel>
-                             <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select management mode" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="manual">Manual Configuration</SelectItem>
-                                <SelectItem value="ai">AI Managed (Uses Recommendations)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormDescription>Choose 'AI Managed' to let agents dynamically adjust risk based on recommendations.</FormDescription>
-                            <FormMessage />
-                          </FormItem>
+                            <FormItem>
+                                <FormLabel>Allowed Trade Types</FormLabel>
+                                <div className="flex space-x-4 pt-2">
+                                    {(["buy", "sell"] as const).map((type) => (
+                                        <FormField
+                                            key={type}
+                                            control={form.control}
+                                            name="allowedTradeTypes"
+                                            render={({ field: itemField }) => (
+                                                <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={itemField.value?.includes(type)}
+                                                            onCheckedChange={(checked) => {
+                                                                return checked
+                                                                ? itemField.onChange([...(itemField.value || []), type])
+                                                                : itemField.onChange(
+                                                                    itemField.value?.filter(
+                                                                        (value) => value !== type
+                                                                    )
+                                                                )
+                                                            }}
+                                                            disabled={isSaving}
+                                                        />
+                                                    </FormControl>
+                                                    <FormLabel className="font-normal capitalize">{type}</FormLabel>
+                                                </FormItem>
+                                            )}
+                                         />
+                                    ))}
+                                </div>
+                                <FormMessage />
+                             </FormItem>
                         )}
-                      />
+                    />
+                     <Separator />
+                     {/* Trading Methods */}
+                     <FormField
+                        control={form.control}
+                        name="allowedTradingMethods"
+                        render={() => (
+                            <FormItem>
+                                <FormLabel>Allowed Trading Methods</FormLabel>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+                                    {(["spot", "futures", "options"] as const).map((method) => (
+                                        <FormField
+                                            key={method}
+                                            control={form.control}
+                                            name="allowedTradingMethods"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                             checked={field.value?.includes(method)}
+                                                             onCheckedChange={(checked) => {
+                                                                return checked
+                                                                ? field.onChange([...(field.value || []), method])
+                                                                : field.onChange(
+                                                                    field.value?.filter(
+                                                                        (value) => value !== method
+                                                                    )
+                                                                )
+                                                            }}
+                                                             disabled={isSaving}
+                                                        />
+                                                    </FormControl>
+                                                     <FormLabel className="font-normal capitalize">{method}</FormLabel>
+                                                </FormItem>
+                                            )}
+                                         />
+                                    ))}
+                                </div>
+                                <FormMessage />
+                             </FormItem>
+                        )}
+                    />
+                     <Separator />
+                    {/* Asset Types */}
+                     <FormField
+                        control={form.control}
+                        name="allowedAssetTypes"
+                        render={() => (
+                            <FormItem>
+                                <FormLabel>Allowed Asset Types</FormLabel>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+                                     {(["stock", "crypto", "forex", "etf"] as const).map((asset) => (
+                                        <FormField
+                                            key={asset}
+                                            control={form.control}
+                                            name="allowedAssetTypes"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                             checked={field.value?.includes(asset)}
+                                                             onCheckedChange={(checked) => {
+                                                                return checked
+                                                                ? field.onChange([...(field.value || []), asset])
+                                                                : field.onChange(
+                                                                    field.value?.filter(
+                                                                        (value) => value !== asset
+                                                                    )
+                                                                )
+                                                            }}
+                                                             disabled={isSaving}
+                                                        />
+                                                    </FormControl>
+                                                     <FormLabel className="font-normal capitalize">{asset}</FormLabel>
+                                                </FormItem>
+                                            )}
+                                         />
+                                    ))}
+                                </div>
+                                <FormMessage />
+                             </FormItem>
+                        )}
+                    />
+                    <Separator />
+                     {/* Categories & Markets */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <FormField
+                            control={form.control}
+                            name="allowedCategories"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Allowed Categories/Sectors (Optional)</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="e.g., Tech, Healthcare, Energy" {...field} disabled={isSaving} />
+                                </FormControl>
+                                <FormDescription>Comma-separated list of allowed market categories.</FormDescription>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name="preferredMarkets"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Preferred Exchanges/Markets</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="e.g., NYSE, NASDAQ, Binance, Kraken" {...field} disabled={isSaving} />
+                                </FormControl>
+                                <FormDescription>Comma-separated list of markets to primarily focus on.</FormDescription>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                     </div>
 
-                      {riskMode === 'manual' && (
-                          <>
-                              <FormField
-                                control={control}
-                                name="defaultRiskPerTrade"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Default Risk Per Trade (%)</FormLabel>
-                                    <FormControl>
-                                      <Input type="number" placeholder="e.g., 1" {...field} value={field.value ?? ''} step="0.1" min="0" max="10" />
-                                    </FormControl>
-                                    <FormDescription>Percentage of capital to risk on a single trade (manual mode).</FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                               <FormField
-                                control={control}
-                                name="maxPortfolioDrawdown"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Max Portfolio Drawdown (%)</FormLabel>
-                                    <FormControl>
-                                      <Input type="number" placeholder="e.g., 20" {...field} value={field.value ?? ''} min="1" max="50" />
-                                    </FormControl>
-                                    <FormDescription>Maximum acceptable loss from the portfolio peak (manual mode).</FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                         </>
-                      )}
-                       {riskMode === 'ai' && (
-                           <Alert variant="default" className="bg-muted/50">
-                              <BrainCircuit className="h-4 w-4"/>
-                              <AlertTitle>AI Managed Risk</AlertTitle>
-                              <AlertDescription>
-                                  Risk parameters (risk per trade, drawdown) will be dynamically adjusted based on active AI recommendations. View and manage recommendations below.
-                              </AlertDescription>
-                          </Alert>
-                       )}
                 </CardContent>
             </Card>
 
-             {/* Leverage Section */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Leverage</CardTitle>
-                    <CardDescription>Configure default leverage settings.</CardDescription>
-                </CardHeader>
-                 <CardContent className="space-y-6">
-                    <FormField
-                        control={control}
-                        name="leverageManagementMode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Leverage Mode</FormLabel>
-                             <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select leverage mode" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="manual">Manual Configuration</SelectItem>
-                                <SelectItem value="ai">AI Managed (Uses Recommendations)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormDescription>Choose how leverage is determined (if supported by broker and strategy).</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      {leverageMode === 'manual' && (
-                           <FormField
-                              control={control}
-                              name="defaultLeverage"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Default Leverage (Manual)</FormLabel>
-                                  <FormControl>
-                                    <Input type="number" placeholder="e.g., 10" {...field} value={field.value ?? ''} min="1" step="1" />
-                                  </FormControl>
-                                  <FormDescription>Default leverage for strategies (if supported/applicable).</FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                      )}
-                      {leverageMode === 'ai' && (
-                           <Alert variant="default" className="bg-muted/50">
-                              <BrainCircuit className="h-4 w-4"/>
-                              <AlertTitle>AI Managed Leverage</AlertTitle>
-                              <AlertDescription>
-                                  Leverage will be dynamically adjusted based on active AI recommendations and risk assessment.
-                              </AlertDescription>
-                          </Alert>
-                       )}
-                 </CardContent>
-            </Card>
 
-             {/* Allowed Trades Section */}
-             <Card>
-                <CardHeader>
-                    <CardTitle>Allowed Trades & Assets</CardTitle>
-                    <CardDescription>Define the scope of trading activities permitted by the system.</CardDescription>
-                </CardHeader>
-                 <CardContent className="space-y-6">
-                      {renderCheckboxGroup("tradeType", ["buy", "sell"])}
-                      {renderCheckboxGroup("tradeMethod", ["spot", "futures", "options"])}
-                      {renderCheckboxGroup("assetType", ["forex", "stock", "crypto", "etf", "commodity"])}
-                      <FormField
-                          control={control}
-                          name="allowedTrades.assetCategory"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Allowed Asset Categories (Optional)</FormLabel>
-                              <FormControl>
-                                  {/* We'll use a simple Input for comma-separated values for now */}
-                                 <Input
-                                     placeholder="e.g., Tech, Finance, Energy"
-                                     value={Array.isArray(field.value) ? field.value.join(', ') : ''}
-                                     onChange={(e) => field.onChange(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                                 />
-                              </FormControl>
-                              <FormDescription>Comma-separated list of allowed sectors or categories (e.g., Tech, Healthcare). Leave blank for all.</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                 </CardContent>
-            </Card>
-
-
-          <Button type="submit">Save Trading Settings</Button>
+            <Button type="submit" disabled={isSaving}>
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save Trading Settings
+            </Button>
         </form>
-      </Form>
+        </Form>
 
-      {/* AI Config Recommendations Section */}
-       <Card id="ai-configs" className="mt-8">
-         <CardHeader>
-            <CardTitle>AI Configuration Recommendations</CardTitle>
-            <CardDescription>Review configurations generated by AI agents based on market conditions and analysis.</CardDescription>
-         </CardHeader>
-         <CardContent>
-             {isLoadingRecs ? (
-                 <div className="flex items-center justify-center h-20">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                 </div>
-             ) : aiRecommendations.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No AI recommendations available currently.</p>
-             ) : (
-                 <ScrollArea className="h-[250px] w-full">
-                     <div className="space-y-3 pr-4">
-                        {aiRecommendations.map((rec) => (
-                            <div key={rec.id} className="flex items-center justify-between rounded-lg border p-3">
-                                <div className="flex-1 space-y-0.5 mr-4 overflow-hidden">
-                                     <p className="text-sm font-medium truncate">{rec.name}</p>
-                                     <p className="text-xs text-muted-foreground truncate">Generated: {new Date(rec.generatedAt).toLocaleDateString()}</p>
-                                     <p className="text-xs text-muted-foreground truncate">Reason: {rec.reason}</p>
-                                </div>
-                                 <Button variant="outline" size="sm" onClick={() => {/* TODO: Implement view/accept logic */ toast({title: "View/Accept Recommendation", description: "Implement functionality"})}}>
-                                     <Eye className="mr-1 h-3 w-3"/> View/Accept
-                                 </Button>
-                            </div>
-                        ))}
-                     </div>
-                 </ScrollArea>
-             )}
-         </CardContent>
-      </Card>
-
-      {/* Stored/Historical Configurations */}
-       <Card className="mt-8">
-           <CardHeader>
-               <CardTitle>Stored Trading Configurations</CardTitle>
-               <CardDescription>Manage previously used or saved configuration files.</CardDescription>
-           </CardHeader>
-           <CardContent>
-               {isLoadingStored ? (
-                  <div className="flex items-center justify-center h-20">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                   </div>
-               ) : storedConfigs.filter(c => !c.isArchived).length === 0 ? ( // Filter out archived here for display count
-                  <p className="text-muted-foreground text-center py-4">No active stored configurations found.</p>
-               ) : (
-                   <ScrollArea className="h-[300px] w-full">
-                       <div className="space-y-3 pr-4">
-                          {storedConfigs.filter(c => !c.isArchived).map((config) => ( // Filter here for display
-                              <div key={config.id} className="flex items-center justify-between rounded-lg border p-3">
-                                  <div className="flex-1 space-y-0.5 mr-2 overflow-hidden">
-                                      <p className="text-sm font-medium truncate">{config.name}</p>
-                                      <p className="text-xs text-muted-foreground truncate">Saved: {new Date(config.savedAt).toLocaleDateString()}</p>
-                                      {config.associatedStrategyId && (
-                                          <p className="text-xs text-muted-foreground truncate">Used with: {config.associatedStrategyId}</p>
-                                      )}
-                                      {typeof config.performance === 'number' && (
-                                           <p className={cn("text-xs font-semibold", config.performance >= 0 ? 'text-green-600' : 'text-red-600')}>
-                                                Performance: {config.performance.toFixed(2)}%
-                                            </p>
-                                      )}
-                                  </div>
-                                   <div className="flex items-center space-x-1">
-                                       <Button variant="outline" size="sm" title="View Details" onClick={() => setViewingConfig(config)}>
-                                           <Eye className="h-4 w-4" />
-                                       </Button>
-                                      <Button variant="outline" size="sm" title="Load Config" onClick={() => handleLoadConfig(config)}>
-                                          <Download className="h-4 w-4" /> {/* Changed icon */}
-                                      </Button>
-                                       <Button variant="outline" size="sm" title="Archive Config" onClick={() => handleArchiveConfig(config.id)}>
-                                           <Archive className="h-4 w-4" />
-                                       </Button>
-                                   </div>
-                              </div>
-                          ))}
-                       </div>
-                   </ScrollArea>
-               )}
-               {/* TODO: Add button/toggle to view archived configurations */}
-           </CardContent>
-       </Card>
-
-       {/* Dialog/Modal for Viewing Stored Config Details (Basic Example) */}
-       {viewingConfig && (
-           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <Card className="w-full max-w-lg">
-                 <CardHeader>
-                    <CardTitle>Config Details: {viewingConfig.name}</CardTitle>
-                     <CardDescription>Saved on {new Date(viewingConfig.savedAt).toLocaleString()}</CardDescription>
-                 </CardHeader>
-                 <CardContent className="max-h-[60vh] overflow-y-auto">
-                    <pre className="text-xs bg-muted p-4 rounded-md whitespace-pre-wrap">
-                        {JSON.stringify(viewingConfig.parameters, null, 2)}
-                    </pre>
-                     {/* Display associated strategy and performance */}
-                 </CardContent>
-                 <CardFooter className="flex justify-between">
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteConfig(viewingConfig.id)}>
-                           <Trash2 className="mr-1 h-4 w-4"/> Delete Permanently
-                      </Button>
-                    <div>
-                        <Button variant="ghost" onClick={() => setViewingConfig(null)}>Close</Button>
-                        <Button className="ml-2" onClick={() => handleLoadConfig(viewingConfig)}>Load Config</Button>
+         {/* Saved Configurations Section */}
+        <Card className="mt-8">
+            <CardHeader>
+                 <CardTitle>Saved Configurations</CardTitle>
+                 <CardDescription>Manage previously saved or AI-generated configurations.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 {isLoadingConfigs && (
+                    <div className="flex items-center justify-center h-20">
+                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                         <span className="ml-2 text-muted-foreground">Loading configurations...</span>
                     </div>
-                 </CardFooter>
-              </Card>
-           </div>
-       )}
+                 )}
+                 {!isLoadingConfigs && savedConfigs.length === 0 && (
+                     <p className="text-sm text-muted-foreground text-center">No saved configurations found.</p>
+                 )}
+                 {!isLoadingConfigs && savedConfigs.length > 0 && (
+                     <ScrollArea className="max-h-[300px] pr-4">
+                         <ul className="space-y-2">
+                             {savedConfigs.map(config => (
+                                <li key={config.id} className="text-sm flex justify-between items-center p-3 rounded border hover:bg-muted/50">
+                                     <div>
+                                        <span className="font-medium">{config.name}</span>
+                                         <span className="text-xs text-muted-foreground ml-2">(Saved: {new Date(config.createdAt).toLocaleDateString()})</span>
+                                         {config.status === 'Archived' && <Badge variant="outline" className="ml-2">Archived</Badge>}
+                                         <p className="text-xs text-muted-foreground mt-1">Associated Strategy: {config.strategyName || 'N/A'}</p>
+                                         {/* Optional: Display brief performance hint */}
+                                     </div>
+                                     <div className="space-x-1">
+                                         <Button size="xs" variant="ghost" onClick={() => handleViewConfig(config)}><Eye className="h-3 w-3 mr-1"/>View</Button>
+                                         {config.status !== 'Archived' && (
+                                             <Button size="xs" variant="outline" onClick={() => handleAcceptConfig(config)}>Load</Button>
+                                         )}
+                                         {config.status !== 'Archived' ? (
+                                             <Button size="xs" variant="ghost" onClick={() => handleArchiveConfigAction(config.id)}><Archive className="h-3 w-3"/></Button>
+                                          ) : (
+                                             <Button size="xs" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeleteConfigAction(config.id)}><Trash2 className="h-3 w-3"/></Button>
+                                          )}
+                                     </div>
+                                 </li>
+                             ))}
+                         </ul>
+                     </ScrollArea>
+                 )}
+            </CardContent>
+        </Card>
 
-    </>
+      </div>
   );
 }
+
+
+// Helper component for Checkbox groups (copied from shadcn docs example) - requires Checkbox import
+interface CheckboxReactHookFormMultipleProps {
+  items: readonly { id: string; label: string }[];
+  form: ReturnType<typeof useForm>; // Pass the form object
+  name: string; // Name of the field in the form schema
+}
+
+// This is likely not needed if using the inline FormField approach above, but kept for reference
+// export function CheckboxReactHookFormMultiple({ items, form, name }: CheckboxReactHookFormMultipleProps) {
+//   return (
+//     <FormField
+//       control={form.control}
+//       name={name}
+//       render={() => (
+//         <FormItem>
+//           {/* ... Label if needed ... */}
+//           {items.map((item) => (
+//             <FormField
+//               key={item.id}
+//               control={form.control}
+//               name={name}
+//               render={({ field }) => {
+//                 return (
+//                   <FormItem
+//                     key={item.id}
+//                     className="flex flex-row items-start space-x-3 space-y-0"
+//                   >
+//                     <FormControl>
+//                       <Checkbox
+//                         checked={field.value?.includes(item.id)}
+//                         onCheckedChange={(checked) => {
+//                           return checked
+//                             ? field.onChange([...field.value, item.id])
+//                             : field.onChange(
+//                                 field.value?.filter(
+//                                   (value) => value !== item.id
+//                                 )
+//                               )
+//                         }}
+//                       />
+//                     </FormControl>
+//                     <FormLabel className="font-normal">
+//                       {item.label}
+//                     </FormLabel>
+//                   </FormItem>
+//                 )
+//               }}
+//             />
+//           ))}
+//           <FormMessage />
+//         </FormItem>
+//       )}
+//     />
+//   )
+// }
+
+// Ensure components used are exported if needed elsewhere
+export { Checkbox }; // Assuming Checkbox is correctly imported from ui

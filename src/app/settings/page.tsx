@@ -1,20 +1,19 @@
+// src/app/settings/page.tsx
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserSettingsForm } from "./_components/user-settings-form";
 import { TradingSettingsForm } from "./_components/trading-settings-form";
 import { AgentSettingsForm } from "./_components/agent-settings-form";
-import { BrokerSettingsForm } from "./_components/broker-settings-form"; // Renamed from CredentialsForm
-import { LlmProviderSettingsForm } from "./_components/llm-provider-settings-form"; // New form
+import { CredentialsForm } from "./_components/credentials-form"; // Handles both LLM and Broker now
 
 export default function SettingsPage() {
   return (
     <Tabs defaultValue="user" className="space-y-4">
-      <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+      <TabsList>
         <TabsTrigger value="user">User Profile</TabsTrigger>
         <TabsTrigger value="trading">Trading</TabsTrigger>
         <TabsTrigger value="agents">Agents</TabsTrigger>
-        <TabsTrigger value="brokers">Brokers</TabsTrigger> {/* Updated from Credentials */}
-        <TabsTrigger value="llms">LLMs</TabsTrigger> {/* New tab */}
+        <TabsTrigger value="credentials">Credentials</TabsTrigger>
       </TabsList>
 
       <TabsContent value="user">
@@ -33,7 +32,7 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Trading Settings</CardTitle>
-            <CardDescription>Configure global trading parameters, risk limits, and AI overrides.</CardDescription>
+            <CardDescription>Configure global trading parameters, risk limits, and allowed trade types.</CardDescription>
           </CardHeader>
           <CardContent>
             <TradingSettingsForm />
@@ -45,7 +44,7 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Agent Settings</CardTitle>
-            <CardDescription>Configure default behaviors and parameters for your agents.</CardDescription>
+            <CardDescription>Configure default behaviors, LLM models, and parameters for your agents.</CardDescription>
           </CardHeader>
           <CardContent>
              <AgentSettingsForm />
@@ -53,26 +52,15 @@ export default function SettingsPage() {
         </Card>
       </TabsContent>
 
-       <TabsContent value="brokers"> {/* Updated value */}
+       <TabsContent value="credentials">
+         {/* Credentials form now handles both LLM and Broker */}
         <Card>
           <CardHeader>
-            <CardTitle>Broker Configuration</CardTitle> {/* Updated title */}
-            <CardDescription>Securely manage API credentials for supported brokers (stored in backend).</CardDescription> {/* Updated description */}
+            <CardTitle>API Credentials</CardTitle>
+            <CardDescription>Securely manage API keys for Brokers and LLM Providers.</CardDescription>
           </CardHeader>
           <CardContent>
-            <BrokerSettingsForm /> {/* Renamed component */}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-       <TabsContent value="llms"> {/* New content */}
-        <Card>
-          <CardHeader>
-            <CardTitle>LLM Provider Configuration</CardTitle>
-            <CardDescription>Configure API keys and endpoints for Large Language Model providers.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LlmProviderSettingsForm />
+            <CredentialsForm />
           </CardContent>
         </Card>
       </TabsContent>
