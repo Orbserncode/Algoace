@@ -1,4 +1,4 @@
-{// src/app/backtesting/_components/advanced-visualizations.tsx
+// src/app/backtesting/_components/advanced-visualizations.tsx
 'use client';
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts'; // Import ComposedChart and Candlestick directly
@@ -8,6 +8,7 @@ import type { BacktestTrade } from '@/services/backtesting-service'; // Import t
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from 'react';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Added for potential future log display
 
 interface AdvancedVisualizationsProps {
   trades: BacktestTrade[];
@@ -301,6 +302,9 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                          stroke="hsl(var(--primary-foreground))" // Border color
                                          isAnimationActive={false} // Disable animation for performance with larger datasets
                                          // Colors are typically handled by the component based on open/close
+                                         // You can customize colors using props like `upColor`, `downColor` if needed
+                                         // upColor="hsl(var(--chart-2))"
+                                         // downColor="hsl(var(--destructive))"
                                      />
                                  </ComposedChart>
                              </ResponsiveContainer>
@@ -330,6 +334,30 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                      <div className="md:col-span-2"> {/* Candlestick spans both columns */}
                         {renderCandlestickChart()}
                     </div>
+                    {/* Optional: Trade Log Section */}
+                    {/* <Card className="md:col-span-2">
+                        <CardHeader>
+                             <CardTitle>Trade Log</CardTitle>
+                             <CardDescription>Detailed list of trades executed during the backtest.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ScrollArea className="h-[300px] w-full rounded-md border p-4">
+                                {isLoading ? (
+                                    <Skeleton className="h-full w-full" />
+                                ) : trades.length > 0 ? (
+                                    <ul className="space-y-2">
+                                        {trades.map((trade, index) => (
+                                            <li key={index} className="text-xs text-muted-foreground">
+                                                {trade.direction} {trade.symbol} @ {trade.entryPrice} -> {trade.exitPrice} (P&L: {trade.pnl.toFixed(2)}) [{new Date(trade.entryTimestamp).toLocaleString()} - {new Date(trade.exitTimestamp).toLocaleString()}]
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-4">No trades recorded for this backtest.</p>
+                                )}
+                            </ScrollArea>
+                        </CardContent>
+                    </Card> */}
                 </CardContent>
             </Card>
         </div>
