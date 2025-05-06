@@ -1,9 +1,9 @@
-
 'use client';
 
 // Import Candlestick directly from recharts, it's used as a tag <Candlestick />
 // Candlestick IS a named export from 'recharts'.
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart } from 'recharts';
+import * as RechartsPrimitive from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
 import type { BacktestTrade } from '@/services/backtesting-service'; // Import trade type
@@ -289,7 +289,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                         tickFormatter={(value) => `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                         width={50} // Give Y axis some space
                                     />
-                                    <RechartsTooltip
+                                    <RechartsPrimitive.Tooltip
                                         cursor={{ strokeDasharray: '3 3' }}
                                         content={({ active, payload, label }) => {
                                              if (active && payload && payload.length) {
