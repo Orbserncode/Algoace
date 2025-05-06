@@ -19,6 +19,8 @@ export interface BacktestSummaryMetrics {
   endDate?: string; // Optional: Date backtest ended
   sharpeRatio?: number; // Optional: Add more metrics as available
   sortinoRatio?: number; // Optional
+  symbol?: string; // Asset/Symbol tested
+  timeframe?: string; // Timeframe used (e.g., '1d', '1h')
   // Add any other relevant summary metrics from your backtesting engine
 }
 
@@ -47,7 +49,8 @@ export interface BacktestResults {
 
 // --- Mock Data ---
 // TODO: Replace with actual data fetching from your backend/database.
-// This mock data should ideally be keyed by strategy ID.
+// This mock data should ideally be keyed by strategy ID AND potentially parameters used.
+// For simplicity, we'll key by strategy ID for now and assume it returns the *latest* result.
 const mockBacktestDb: Record<string, BacktestResults> = {
     'strat-001': {
         strategyId: 'strat-001',
@@ -62,6 +65,8 @@ const mockBacktestDb: Record<string, BacktestResults> = {
             startDate: '2023-01-01',
             endDate: '2023-12-31',
             sharpeRatio: 1.15,
+            symbol: 'AAPL', // Added symbol
+            timeframe: '1d', // Added timeframe
         },
         equityCurve: [ // Example simplified equity curve
             { date: '2023-01-01', portfolioValue: 10000, profit: 0 },
@@ -72,10 +77,10 @@ const mockBacktestDb: Record<string, BacktestResults> = {
         ],
         trades: [ // Example simplified trades
             { entryTimestamp: '2023-01-10T10:00:00Z', exitTimestamp: '2023-01-10T15:30:00Z', symbol: 'AAPL', direction: 'Long', entryPrice: 130.50, exitPrice: 131.80, quantity: 10, pnl: 13.00 },
-            { entryTimestamp: '2023-01-15T11:00:00Z', exitTimestamp: '2023-01-16T09:45:00Z', symbol: 'MSFT', direction: 'Long', entryPrice: 250.00, exitPrice: 248.50, quantity: 5, pnl: -7.50 },
+            { entryTimestamp: '2023-01-15T11:00:00Z', exitTimestamp: '2023-01-16T09:45:00Z', symbol: 'AAPL', direction: 'Long', entryPrice: 131.00, exitPrice: 129.50, quantity: 10, pnl: -15.00 },
             // ... more trades
         ],
-        parameters: { short_ema: 10, long_ema: 25 }
+        parameters: { short_ema: 10, long_ema: 25, symbol: 'AAPL', timeframe: '1d' } // Reflect backtest params
     },
     'strat-003': {
         strategyId: 'strat-003',
@@ -90,6 +95,8 @@ const mockBacktestDb: Record<string, BacktestResults> = {
             startDate: '2023-01-01',
             endDate: '2023-12-31',
             sharpeRatio: 1.85,
+            symbol: 'GOOGL', // Added symbol
+            timeframe: '4h', // Added timeframe
         },
         equityCurve: [
              { date: '2023-01-01', portfolioValue: 10000, profit: 0 },
@@ -102,9 +109,8 @@ const mockBacktestDb: Record<string, BacktestResults> = {
             { entryTimestamp: '2023-02-05T14:00:00Z', exitTimestamp: '2023-02-08T11:30:00Z', symbol: 'GOOGL', direction: 'Long', entryPrice: 95.00, exitPrice: 101.50, quantity: 15, pnl: 97.50 },
             // ... more trades
         ],
-        parameters: { model_version: 'v2.1', confidence_threshold: 0.7 }
+        parameters: { model_version: 'v2.1', confidence_threshold: 0.7, symbol: 'GOOGL', timeframe: '4h' }
     },
-     // Add mock data for other strategies if needed, or return a default/error state
      'strat-002': { // Example for a strategy with poor results
          strategyId: 'strat-002',
          timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
@@ -118,6 +124,8 @@ const mockBacktestDb: Record<string, BacktestResults> = {
              startDate: '2023-01-01',
              endDate: '2023-12-31',
              sharpeRatio: -0.5,
+             symbol: 'MSFT', // Added symbol
+             timeframe: '1h', // Added timeframe
          },
          equityCurve: [
               { date: '2023-01-01', portfolioValue: 10000, profit: 0 },
@@ -126,11 +134,10 @@ const mockBacktestDb: Record<string, BacktestResults> = {
               { date: '2023-09-01', portfolioValue: 9500, profit: -500 },
               { date: '2023-12-31', portfolioValue: 9659.90, profit: -340.10 },
          ],
-         trades: [], // Less important to mock trades for failed strategy example
-         parameters: { period: 14, std_dev: 2.0 }
+         trades: [],
+         parameters: { period: 14, std_dev: 2.0, symbol: 'MSFT', timeframe: '1h' }
      },
 };
-
 
 // Simulate potential API/DB errors
 const simulateError = (probability = 0.1) => {
@@ -141,9 +148,9 @@ const simulateError = (probability = 0.1) => {
 
 /**
  * Fetches the latest backtest results for a given strategy.
- * TODO: Replace with actual data fetching logic. This should query your
- *       database or results store for the most recent completed backtest run
- *       for the specified strategy ID.
+ * In a real system, this might fetch based on strategyId AND the specific parameters used.
+ * For this mock, it just returns the pre-defined result for the strategyId.
+ * TODO: Replace with actual data fetching logic.
  * @param strategyId The ID of the strategy.
  * @returns A promise that resolves to the BacktestResults object.
  * @throws Throws an error if the backtest results are not found or if fetching fails.
@@ -159,52 +166,107 @@ export async function getBacktestResults(strategyId: string): Promise<BacktestRe
     if (!results) {
         // Simulate a case where backtest hasn't been run or results aren't stored
         console.warn(`No backtest results found for strategy ${strategyId}.`);
+        // NOTE: In a real system triggered by runBacktest, you might loop/wait here or rely on the job status polling.
+        // For direct fetching, throwing an error is appropriate.
         throw new Error(`No backtest results available for strategy "${strategyId}". Please run a backtest first.`);
     }
 
     console.log(`Returning backtest results for ${strategyId}`);
+    // Simulate adapting the result based on *requested* params if needed (more complex mock)
+    // For now, just return the stored mock result.
     return results;
 }
 
 /**
- * (Optional) Triggers a new backtest run for a strategy.
+ * Triggers a new backtest run for a strategy with specific parameters.
  * TODO: Implement the backend logic to queue or start a backtest process.
  * This function would likely send a request to your backend API.
  * @param strategyId The ID of the strategy to backtest.
- * @param parameters Optional parameters for the backtest (e.g., date range, initial capital).
- * @returns A promise that resolves when the backtest is successfully queued or started (e.g., returns a job ID).
+ * @param parameters Parameters for the backtest (e.g., dates, capital, symbol, timeframe).
+ * @returns A promise that resolves when the backtest is successfully queued (e.g., returns a job ID).
  */
-export async function runBacktest(strategyId: string, parameters?: Record<string, any>): Promise<{ jobId: string }> {
+export async function runBacktest(strategyId: string, parameters: {
+    startDate: string; // Expecting 'YYYY-MM-DD' format
+    endDate: string;   // Expecting 'YYYY-MM-DD' format
+    initialCapital: number;
+    symbol: string;
+    timeframe: string; // e.g., '1d', '1h'
+    // Add other potential parameters like leverage, specific strategy params overrides, etc.
+}): Promise<{ jobId: string }> {
     console.log(`Requesting backtest run for strategy: ${strategyId} with params:`, parameters);
     // Simulate API call to backend to trigger the backtest
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 200)); // Reduced delay
     simulateError(0.15); // Simulate potential error in triggering
 
     // --- Backend actions needed here: ---
     // 1. Validate strategyId and parameters.
-    // 2. Find the strategy code (e.g., path to the .py file).
+    // 2. Find the strategy code (e.g., path to the .py file associated with strategyId).
     // 3. Queue a job in a task queue (like Celery, RQ, BullMQ) or directly invoke the backtesting engine.
-    // 4. The job runner would execute Lumibot (or similar) with the strategy code and parameters.
-    // 5. Upon completion, the job runner saves the results (summary, equity curve, trades) to the database/store.
-    // 6. Optionally update the strategy status to 'Backtesting' while running and 'Inactive'/'Active' on completion.
+    // 4. Pass the strategy code path and *all relevant parameters* (dates, capital, symbol, timeframe, etc.) to the job.
+    // 5. The job runner would execute Lumibot (or similar).
+    // 6. Upon completion, the job runner saves the results (summary, equity curve, trades, *parameters used*) to the database/store, possibly associated with the job ID and strategy ID.
+    // 7. Optionally update the strategy status (e.g., 'Backtesting').
     // -------------------------------------
 
-    const jobId = `backtest-${strategyId}-${Date.now()}`;
+    const jobId = `backtest-${strategyId}-${Date.now().toString().slice(-6)}`;
     console.log(`Backtest job queued/started for ${strategyId}. Job ID: ${jobId}`);
-    return { jobId }; // Return a simulated job ID
+
+    // --- Mock: Pre-populate result after a delay for polling ---
+    // In a real system, the job runner would save the results. Here we simulate it.
+    setTimeout(() => {
+        const baseResult = mockBacktestDb[strategyId];
+        if (baseResult) {
+             mockBacktestDb[strategyId] = { // Overwrite/update the mock result
+                 ...baseResult,
+                 timestamp: new Date().toISOString(),
+                 parameters: { ...baseResult.parameters, ...parameters }, // Include run parameters
+                 summaryMetrics: {
+                     ...baseResult.summaryMetrics,
+                     startDate: parameters.startDate,
+                     endDate: parameters.endDate,
+                     symbol: parameters.symbol,
+                     timeframe: parameters.timeframe,
+                     // Simulate slightly different results based on params (very basic example)
+                     netProfit: baseResult.summaryMetrics.netProfit * (0.9 + Math.random() * 0.2),
+                     maxDrawdown: baseResult.summaryMetrics.maxDrawdown * (0.9 + Math.random() * 0.2),
+                 }
+             };
+             console.log(`Mock backtest job ${jobId} completed and results updated for ${strategyId}.`);
+        }
+    }, 8000 + Math.random() * 5000); // Simulate backtest duration (8-13 seconds)
+    // --------------------------------------------------------
+
+    return { jobId }; // Return the simulated job ID immediately
 }
 
 /**
- * (Optional) Fetches the status of a specific backtest job.
- * TODO: Implement backend logic to check job status.
+ * Fetches the status of a specific backtest job.
+ * TODO: Implement backend logic to check job status from the task queue or job store.
  * @param jobId The ID of the backtest job.
  * @returns A promise resolving to the job status (e.g., 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED').
  */
-export async function getBacktestJobStatus(jobId: string): Promise<string> {
+export async function getBacktestJobStatus(jobId: string): Promise<'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'> {
      console.log(`Checking status for backtest job: ${jobId}`);
-     await new Promise(resolve => setTimeout(resolve, 200));
-     // Simulate checking status - return 'COMPLETED' for demo purposes
-     const statuses = ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED'];
-     // In a real app, query your task queue or job store
-     return 'COMPLETED'; // Placeholder
+     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 100)); // Faster status check
+     simulateError(0.05); // Low chance of error checking status
+
+     // --- Mock Status Logic ---
+     // Basic mock: Assume jobs started with 'backtest-' are initially running, then complete later.
+     // This relies on the setTimeout in runBacktest to eventually update the DB for getBacktestResults.
+     const strategyId = jobId.split('-')[1]; // Extract strategy ID from job ID (crude)
+     const resultExists = !!mockBacktestDb[strategyId] && mockBacktestDb[strategyId].timestamp > new Date(Date.now() - 60000).toISOString(); // Check if result updated recently
+
+     // If a recent result exists in our mock DB, assume the job completed.
+     // In a real system, you'd query the actual job status.
+     if (resultExists) {
+         return 'COMPLETED';
+     }
+
+     // Simulate pending/running - very basic random assignment for mock
+     // A real system would track this properly.
+     if(Math.random() < 0.3) return 'PENDING';
+     if(Math.random() < 0.9) return 'RUNNING'; // Higher chance of being running if not completed
+
+     return 'FAILED'; // Default mock fallback
+     // -----------------------
 }

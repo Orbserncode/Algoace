@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode, History } from "lucide-react"; // Added History icon for Backtest
+import { Play, Pause, Edit, Trash2, Loader2, BrainCircuit, FileCode } from "lucide-react"; // Removed History icon
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,7 +29,7 @@ import {
 import type { Strategy } from '@/services/strategies-service'; // Import type
 import { updateStrategy, deleteStrategy } from '@/services/strategies-service'; // Import service functions
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip
-import { BacktestResultDialog } from './backtest-result-dialog'; // Import the new dialog
+// Removed BacktestResultDialog import
 
 interface StrategyTableProps {
   strategies: Strategy[];
@@ -39,10 +39,9 @@ interface StrategyTableProps {
 
 export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }: StrategyTableProps) {
   const { toast } = useToast();
-  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002", "backtest:strat-003")
+  // Track loading state per action and strategy ID (e.g., "toggle:strat-001", "delete:strat-002")
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [isBacktestDialogOpen, setIsBacktestDialogOpen] = useState(false);
-  const [selectedStrategyForBacktest, setSelectedStrategyForBacktest] = useState<Strategy | null>(null);
+  // Removed backtest dialog state
 
   const handleToggleStatus = async (strategy: Strategy) => {
     const action = strategy.status === 'Active' ? 'Pause' : 'Start';
@@ -78,21 +77,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
     toast({ title: "Feature Not Implemented", description: `Editing strategy ${strategyId} is not yet available.` });
   };
 
-   const handleBacktest = (strategy: Strategy) => {
-    console.log("Initiating backtest view for:", strategy.name);
-    setSelectedStrategyForBacktest(strategy);
-    setIsBacktestDialogOpen(true);
-    // In a real app, you might trigger the backtest run here if it's not pre-computed
-    // setLoadingAction(`backtest:${strategy.id}`);
-    // try {
-    //   await runBacktest(strategy.id, { /* params */ });
-    //   toast({ title: "Backtest Started", description: `Backtest for ${strategy.name} is running.` });
-    // } catch (error) {
-    //   toast({ title: "Backtest Error", description: `Could not start backtest for ${strategy.name}.`, variant: "destructive" });
-    // } finally {
-    //   setLoadingAction(null);
-    // }
-  };
+   // Removed handleBacktest function
 
   const handleDeleteConfirm = async (strategy: Strategy) => {
     const actionId = `delete:${strategy.id}`;
@@ -129,7 +114,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
       case 'Inactive':
         return 'secondary';
       case 'Debugging':
-      case 'Backtesting':
+      case 'Backtesting': // Keep this case for potential status updates
         return 'outline';
       default:
         return 'secondary';
@@ -159,13 +144,12 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             <TableHead className="w-[100px] hidden md:table-cell">Source</TableHead>
             <TableHead className="text-right hidden sm:table-cell w-[120px]">P&L (USD)</TableHead>
             <TableHead className="text-right hidden lg:table-cell w-[100px]">Win Rate</TableHead>
-            <TableHead className="text-right w-[200px]">Actions</TableHead> {/* Increased width for new button */}
+            <TableHead className="text-right w-[150px]">Actions</TableHead> {/* Adjusted width */}
           </TableRow>
         </TableHeader>
         <TableBody>
            {strategies.length === 0 && (
               <TableRow>
-                  {/* Updated colSpan to 7 */}
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       No strategies found. Use the "Automated Strategy Generation" section or "Add New Strategy" button.
                   </TableCell>
@@ -174,8 +158,8 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
           {strategies.map((strategy) => {
               const isToggling = loadingAction === `toggle:${strategy.id}`;
               const isDeleting = loadingAction === `delete:${strategy.id}`;
-              const isBacktesting = loadingAction === `backtest:${strategy.id}`; // Track backtest loading if needed
-              const isAnyLoading = isToggling || isDeleting || isBacktesting;
+              // Removed isBacktesting
+              const isAnyLoading = isToggling || isDeleting;
 
               return (
                 <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
@@ -210,7 +194,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                     <div className="flex justify-end space-x-1 items-center">
                        {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
                        {isDeleting && <Loader2 className="h-4 w-4 animate-spin text-destructive mr-1" />}
-                       {isBacktesting && <Loader2 className="h-4 w-4 animate-spin text-accent mr-1" />}
+                       {/* Removed backtest loader */}
 
                        {!isAnyLoading && (
                            <>
@@ -228,17 +212,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                   </Tooltip>
                                )}
 
-                               {/* Backtest Button */}
-                              <Tooltip>
-                                  <TooltipTrigger asChild>
-                                       <Button variant="ghost" size="icon" aria-label="View Backtest Results" onClick={() => handleBacktest(strategy)} disabled={isAnyLoading}>
-                                        <History className="h-4 w-4" />
-                                       </Button>
-                                  </TooltipTrigger>
-                                   <TooltipContent>
-                                      <p>View Backtest Results</p>
-                                   </TooltipContent>
-                              </Tooltip>
+                               {/* Removed Backtest Button */}
 
                                {/* Edit Button */}
                               <Tooltip>
@@ -294,14 +268,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
       </Table>
     </TooltipProvider>
 
-    {/* Backtest Result Dialog */}
-     {selectedStrategyForBacktest && (
-        <BacktestResultDialog
-            isOpen={isBacktestDialogOpen}
-            onOpenChange={setIsBacktestDialogOpen}
-            strategy={selectedStrategyForBacktest}
-        />
-     )}
+    {/* Removed Backtest Result Dialog rendering */}
     </>
   );
 }
