@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { ScrollArea } from "@/components/ui/scroll-area"; // ADDED: Import ScrollArea
 
 export default function Error({
   error,
@@ -26,10 +27,12 @@ export default function Error({
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                    Error details (for debugging): {error.message}
-                    {error.digest && ` (Digest: ${error.digest})`}
-                </p>
+                <ScrollArea className="max-h-48"> {/* ADDED: ScrollArea here */}
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Error details (for debugging): {error.message}
+                        {error.digest && ` (Digest: ${error.digest})`}
+                    </p>
+                </ScrollArea>
             </CardContent>
             <CardFooter className="flex justify-center">
                 <Button
@@ -45,3 +48,4 @@ export default function Error({
     </div>
   )
 }
+
