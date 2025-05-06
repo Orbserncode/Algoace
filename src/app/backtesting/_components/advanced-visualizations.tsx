@@ -3,6 +3,7 @@
 // Import Candlestick directly from recharts, it's used as a tag <Candlestick />
 // Candlestick IS a named export from 'recharts'.
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart } from 'recharts';
+import { Candlestick } from 'recharts';
 import * as RechartsPrimitive from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
@@ -336,7 +337,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                                      {/* Candlestick series - use the component tag */}
                                      {/* Ensure correct dataKey for Candlestick */}
-                                     <RechartsPrimitive.Candlestick
+                                     <Candlestick
                                          dataKey="value" // This should match the key containing the [open, high, low, close] array
                                          fill="hsl(var(--primary))" // Base fill color
                                          stroke="hsl(var(--primary-foreground))" // Border color
