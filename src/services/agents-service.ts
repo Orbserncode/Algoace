@@ -71,11 +71,11 @@ export const DataAgentConfigSchema = BaseAgentConfigSchema.extend({
   dataProviderConfigId: z.string().optional().describe("ID of a specific data provider configuration (e.g., a specific broker or direct API)."),
   fetchFrequencyMinutes: z.number().int().min(1).max(1440).default(15).describe("How often to fetch new market data, in minutes."),
   watchedAssets: z.array(z.object({
-      brokerId: z.string().describe("ID of the broker providing this asset."),
-      symbol: z.string().describe("Asset symbol (e.g., AAPL, BTC/USD).")
+      brokerId: z.string().min(1, "Broker ID is required for watched asset.").describe("ID of the broker providing this asset."),
+      symbol: z.string().min(1, "Symbol is required for watched asset.").describe("Asset symbol (e.g., AAPL, BTC/USD).")
     }))
     .min(1, "At least one asset must be watched.")
-    .default([])
+    .default([{brokerId: "broker-alpaca-paper", symbol: "SPY"}]) // Provide a default valid asset
     .describe("List of assets to monitor, potentially from multiple brokers."),
   useSerpApiForNews: z.boolean().default(false).describe("Enable fetching news and sentiment via SerpAPI for watched assets."),
 });
@@ -118,23 +118,23 @@ export interface Agent {
 const mockAgents: Agent[] = [
   {
     id: 'agent-gen-default', name: 'Strategy Generator', type: 'Strategy Coding Agent', status: 'Running', description: 'Automatically codes, debugs, and backtests new strategies.', tasksCompleted: 15, errors: 1, isDefault: true,
-    config: StrategyCodingAgentConfigSchema.parse({ llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['Backtester', 'TechnicalIndicatorCalculator'] }),
+    // config: StrategyCodingAgentConfigSchema.parse({ llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['Backtester', 'TechnicalIndicatorCalculator'] }),
   },
   {
     id: 'agent-exec-momentum', name: 'Momentum Executor', type: 'Execution Agent', status: 'Running', description: 'Executes trades for momentum strategies.', tasksCompleted: 128, errors: 0, isDefault: false, associatedStrategyIds: ['strat-001'],
-    config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', enabledTools: ['OrderExecutor', 'PortfolioManager'], requiresAllAgentConfirmation: true }),
+    // config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', enabledTools: ['OrderExecutor', 'PortfolioManager'], requiresAllAgentConfirmation: true }),
   },
   {
     id: 'agent-data-main', name: 'Market Scanner', type: 'Data Agent', status: 'Running', description: 'Monitors market data for signals & news.', tasksCompleted: 1532, errors: 3, isDefault: true,
-    config: DataAgentConfigSchema.parse({ dataProviderConfigId: 'broker-alpaca-paper', watchedAssets: [{brokerId: 'broker-alpaca-paper', symbol: 'AAPL'}, {brokerId: 'broker-alpaca-paper', symbol: 'MSFT'}], useSerpApiForNews: true, enabledTools: ['MarketDataFetcher', 'WebSearcher']}),
+    // config: DataAgentConfigSchema.parse({ dataProviderConfigId: 'broker-alpaca-paper', watchedAssets: [{brokerId: 'broker-alpaca-paper', symbol: 'AAPL'}, {brokerId: 'broker-alpaca-paper', symbol: 'MSFT'}], useSerpApiForNews: true, enabledTools: ['MarketDataFetcher', 'WebSearcher']}),
   },
   {
     id: 'agent-exec-ai', name: 'AI Trend Executor', type: 'Execution Agent', status: 'Idle', description: 'Executes trades for AI-driven trend strategies.', tasksCompleted: 95, errors: 0, isDefault: false, associatedStrategyIds: ['strat-003'],
-    config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', maxConcurrentTrades: 3, orderRetryAttempts: 5, requiresAllAgentConfirmation: false, enabledTools: ['OrderExecutor', 'PortfolioManager'] }),
+    // config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', maxConcurrentTrades: 3, orderRetryAttempts: 5, requiresAllAgentConfirmation: false, enabledTools: ['OrderExecutor', 'PortfolioManager'] }),
   },
   {
     id: 'agent-risk-default', name: 'Portfolio Analyst', type: 'Analysis Agent', status: 'Running', description: 'Monitors overall portfolio risk and performance.', tasksCompleted: 45, errors: 0, isDefault: true,
-    config: AnalysisAgentConfigSchema.parse({llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['PortfolioManager', 'TechnicalIndicatorCalculator', 'MarketDataFetcher']}),
+    // config: AnalysisAgentConfigSchema.parse({llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['PortfolioManager', 'TechnicalIndicatorCalculator', 'MarketDataFetcher']}),
   },
 ];
 
@@ -144,12 +144,12 @@ let mockAgentConfigs: Record<string, AgentConfig> = {
         llmModelProviderId: 'llm-google-default', 
         llmModelName: 'gemini-2.0-flash', 
         enabledTools: ['Backtester', 'TechnicalIndicatorCalculator'],
-        generationPrompt: StrategyCodingAgentConfigSchema.shape.generationPrompt.default(undefined) // Ensure default is used
+        // generationPrompt: StrategyCodingAgentConfigSchema.shape.generationPrompt.default(undefined) // Let Zod handle default
     }),
     'agent-exec-momentum': ExecutionAgentConfigSchema.parse({ 
         brokerConfigId: 'broker-alpaca-paper', 
         enabledTools: ['OrderExecutor', 'PortfolioManager'],
-        executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined),
+        // executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined), // Let Zod handle default
         requiresAllAgentConfirmation: true
     }),
     'agent-data-main': DataAgentConfigSchema.parse({ 
@@ -166,14 +166,14 @@ let mockAgentConfigs: Record<string, AgentConfig> = {
         maxConcurrentTrades: 3, 
         orderRetryAttempts: 5, 
         enabledTools: ['OrderExecutor', 'PortfolioManager'],
-        executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined),
+        // executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined), // Let Zod handle default
         requiresAllAgentConfirmation: false,
     }),
     'agent-risk-default': AnalysisAgentConfigSchema.parse({
         llmModelProviderId: 'llm-google-default', 
         llmModelName: 'gemini-2.0-flash', 
         enabledTools: ['PortfolioManager', 'TechnicalIndicatorCalculator', 'MarketDataFetcher'],
-        analysisPrompt: AnalysisAgentConfigSchema.shape.analysisPrompt.default(undefined),
+        // analysisPrompt: AnalysisAgentConfigSchema.shape.analysisPrompt.default(undefined), // Let Zod handle default
     }),
 };
 
@@ -202,7 +202,21 @@ export async function getAgentById(agentId: string): Promise<Agent | null> {
 
 export async function getAgentConfig(agentId: string): Promise<AgentConfig | null> {
     await new Promise(resolve => setTimeout(resolve, 150));
-    return mockAgentConfigs[agentId] || null;
+    const agent = mockAgents.find(a => a.id === agentId);
+    if (!agent) return null;
+    // Ensure a default config is created if one doesn't exist
+    if (!mockAgentConfigs[agentId]) {
+        let defaultConfig: AgentConfig;
+        switch (agent.type) {
+            case 'Strategy Coding Agent': defaultConfig = StrategyCodingAgentConfigSchema.parse({}); break;
+            case 'Execution Agent': defaultConfig = ExecutionAgentConfigSchema.parse({brokerConfigId: ""}); break; // Provide minimal valid
+            case 'Data Agent': defaultConfig = DataAgentConfigSchema.parse({watchedAssets: [{brokerId: "default-broker", symbol: "DEFAULT"}] }); break; // Provide minimal valid
+            case 'Analysis Agent': defaultConfig = AnalysisAgentConfigSchema.parse({}); break;
+            default: defaultConfig = BaseAgentConfigSchema.parse({});
+        }
+        mockAgentConfigs[agentId] = defaultConfig;
+    }
+    return mockAgentConfigs[agentId];
 }
 
 export async function updateAgentConfig(agentId: string, config: AgentConfig): Promise<AgentConfig | null> {
@@ -273,7 +287,7 @@ export async function addAgent(agentData: Omit<Agent, 'id' | 'tasksCompleted' | 
      switch (newAgent.type) {
         case 'Strategy Coding Agent': defaultConfig = StrategyCodingAgentConfigSchema.parse({}); break;
         case 'Execution Agent': defaultConfig = ExecutionAgentConfigSchema.parse({ brokerConfigId: "" }); break;
-        case 'Data Agent': defaultConfig = DataAgentConfigSchema.parse({}); break;
+        case 'Data Agent': defaultConfig = DataAgentConfigSchema.parse({ watchedAssets: [{brokerId: "default-broker", symbol: "DEFAULT"}] }); break;
         case 'Analysis Agent': defaultConfig = AnalysisAgentConfigSchema.parse({}); break;
         default: defaultConfig = BaseAgentConfigSchema.parse({});
      }
