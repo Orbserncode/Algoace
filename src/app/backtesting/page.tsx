@@ -73,6 +73,7 @@ export default function BacktestingPage() {
     const [aiSummary, setAiSummary] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null); // To track the running job
+    const [isInitialDataLoading, setIsInitialDataLoading] = useState(true); // Track initial load
 
     const form = useForm<BacktestFormData>({
         resolver: zodResolver(backtestFormSchema),
@@ -90,6 +91,7 @@ export default function BacktestingPage() {
     // Fetch strategies and assets on mount
     useEffect(() => {
         async function loadInitialData() {
+            setIsInitialDataLoading(true); // Start loading
             try {
                 const [fetchedStrategies, fetchedAssets] = await Promise.all([
                     getStrategies(),
@@ -101,6 +103,8 @@ export default function BacktestingPage() {
                 console.error("Failed to load initial data:", err);
                 setError("Failed to load strategies or assets. Please refresh.");
                 toast({ title: "Error", description: "Could not load initial data.", variant: "destructive" });
+            } finally {
+                setIsInitialDataLoading(false); // Finish loading
             }
         }
         loadInitialData();
@@ -154,7 +158,7 @@ export default function BacktestingPage() {
              console.error("Failed to fetch backtest results:", err);
              setError(`Failed to load backtest results. ${err instanceof Error ? err.message : 'Please try again.'}`);
              setBacktestState(BacktestState.ERROR);
-             toast({ title: "Error Loading Results", description: error, variant: "destructive" });
+             toast({ title: "Error Loading Results", description: error || 'Unknown Error', variant: "destructive" }); // Ensure error is a string
          }
     }
 
@@ -229,7 +233,7 @@ export default function BacktestingPage() {
         }
    };
 
-    const isLoading = backtestState === BacktestState.QUEUING || backtestState === BacktestState.RUNNING || backtestState === BacktestState.FETCHING;
+    const isLoading = backtestState === BacktestState.QUEUING || backtestState === BacktestState.RUNNING || backtestState === BacktestState.FETCHING || isInitialDataLoading;
     const selectedStrategyName = strategies.find(s => s.id === form.watch('strategyId'))?.name || "Strategy";
 
 
@@ -251,8 +255,9 @@ export default function BacktestingPage() {
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        {strategies.length === 0 && <SelectItem value="" disabled>Loading strategies...</SelectItem>}
-                                        {strategies.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        {isInitialDataLoading && <SelectItem value="loading" disabled>Loading strategies...</SelectItem>}
+                                        {!isInitialDataLoading && strategies.length === 0 && <SelectItem value="no-strategies" disabled>No strategies available.</SelectItem>}
+                                        {!isInitialDataLoading && strategies.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -272,8 +277,9 @@ export default function BacktestingPage() {
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        {assets.length === 0 && <SelectItem value="" disabled>Loading assets...</SelectItem>}
-                                        {assets.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                                         {isInitialDataLoading && <SelectItem value="loading-assets" disabled>Loading assets...</SelectItem>}
+                                         {!isInitialDataLoading && assets.length === 0 && <SelectItem value="no-assets" disabled>No assets available.</SelectItem>}
+                                         {!isInitialDataLoading && assets.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                                         {/* Add option for custom input? */}
                                     </SelectContent>
                                 </Select>
@@ -406,15 +412,23 @@ export default function BacktestingPage() {
                         )}
                     />
                 </div>
-                <Button type="submit" disabled={isLoading} className="w-full md:w-auto">
-                    {isLoading ? (
+                <Button type="submit" disabled={isLoading || backtestState !== BacktestState.IDLE && backtestState !== BacktestState.COMPLETE && backtestState !== BacktestState.ERROR} className="w-full md:w-auto">
+                    {backtestState === BacktestState.QUEUING ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            {backtestState === BacktestState.QUEUING && 'Queuing...'}
-                            {backtestState === BacktestState.RUNNING && `Running Job ${jobId?.substring(0, 8)}...`}
-                            {backtestState === BacktestState.FETCHING && 'Fetching Results...'}
+                            Queuing...
                         </>
-                    ) : (
+                     ) : backtestState === BacktestState.RUNNING ? (
+                         <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Running Job {jobId?.substring(0, 8)}...
+                        </>
+                     ) : backtestState === BacktestState.FETCHING ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Fetching Results...
+                         </>
+                     ) : (
                         "Run Backtest"
                     )}
                 </Button>
@@ -538,8 +552,14 @@ export default function BacktestingPage() {
                              {!error && aiSummary && (
                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{aiSummary}</p>
                              )}
-                             {!error && !aiSummary && (
+                             {!error && !aiSummary && backtestState !== BacktestState.SUMMARIZING && ( // Don't show if currently summarizing
                                  <p className="text-sm text-muted-foreground">Click "Generate Summary" for an AI interpretation.</p>
+                              )}
+                              {backtestState === BacktestState.SUMMARIZING && (
+                                 <div className="flex items-center text-muted-foreground">
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      <span>Generating AI summary...</span>
+                                  </div>
                               )}
                          </CardContent>
                      </Card>
@@ -551,7 +571,10 @@ export default function BacktestingPage() {
          // Default: Show prompt or initial state message
          return (
             <div className="text-center text-muted-foreground py-10">
-                Select a strategy and parameters, then click "Run Backtest".
+                {isInitialDataLoading
+                    ? 'Loading initial data...'
+                    : 'Select a strategy and parameters, then click "Run Backtest".'
+                }
             </div>
         );
     };
@@ -567,7 +590,20 @@ export default function BacktestingPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {renderForm()}
+                    {isInitialDataLoading ? (
+                         <div className="flex justify-center items-center py-10">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-muted-foreground">Loading configuration...</span>
+                         </div>
+                    ) : error && strategies.length === 0 && assets.length === 0 ? ( // Show error only if data failed to load
+                        <div className="flex flex-col items-center justify-center py-10 text-destructive">
+                            <AlertTriangle className="h-8 w-8 mb-2" />
+                            <p>{error}</p>
+                            <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Retry</Button>
+                        </div>
+                     ) : (
+                        renderForm() // Render the form once data is loaded or if there's no error
+                    )}
                 </CardContent>
             </Card>
 
