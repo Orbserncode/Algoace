@@ -4,16 +4,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserSettingsForm } from "./_components/user-settings-form";
 import { TradingSettingsForm } from "./_components/trading-settings-form";
 import { AgentSettingsForm } from "./_components/agent-settings-form";
-import { CredentialsForm } from "./_components/credentials-form"; // Handles both LLM and Broker now
+import { CredentialsForm } from "./_components/credentials-form"; // Handles LLM, Broker, and SerpAPI
 
 export default function SettingsPage() {
   return (
     <Tabs defaultValue="user" className="space-y-4">
       <TabsList>
         <TabsTrigger value="user">User Profile</TabsTrigger>
-        <TabsTrigger value="trading">Trading</TabsTrigger>
-        <TabsTrigger value="agents">Agents</TabsTrigger>
-        <TabsTrigger value="credentials">Credentials</TabsTrigger>
+        <TabsTrigger value="trading">Trading Rules</TabsTrigger> {/* Renamed for clarity */}
+        <TabsTrigger value="agents">Agent Defaults</TabsTrigger> {/* Renamed for clarity */}
+        <TabsTrigger value="credentials">API Credentials</TabsTrigger> {/* Renamed for clarity */}
       </TabsList>
 
       <TabsContent value="user">
@@ -31,8 +31,8 @@ export default function SettingsPage() {
       <TabsContent value="trading">
         <Card>
           <CardHeader>
-            <CardTitle>Trading Settings</CardTitle>
-            <CardDescription>Configure global trading parameters, risk limits, and allowed trade types.</CardDescription>
+            <CardTitle>Global Trading Rules</CardTitle>
+            <CardDescription>Configure global trading parameters, risk limits, and allowed trade types. These can be overridden by AI suggestions or specific agent settings.</CardDescription>
           </CardHeader>
           <CardContent>
             <TradingSettingsForm />
@@ -43,8 +43,8 @@ export default function SettingsPage() {
       <TabsContent value="agents">
         <Card>
           <CardHeader>
-            <CardTitle>Agent Settings</CardTitle>
-            <CardDescription>Configure default behaviors, LLM models, and parameters for your agents.</CardDescription>
+            <CardTitle>Default Agent Settings</CardTitle>
+            <CardDescription>Configure default behaviors and parameters for various agent types. Specific agents can override these.</CardDescription>
           </CardHeader>
           <CardContent>
              <AgentSettingsForm />
@@ -53,11 +53,10 @@ export default function SettingsPage() {
       </TabsContent>
 
        <TabsContent value="credentials">
-         {/* Credentials form now handles both LLM and Broker */}
         <Card>
           <CardHeader>
-            <CardTitle>API Credentials</CardTitle>
-            <CardDescription>Securely manage API keys for Brokers and LLM Providers.</CardDescription>
+            <CardTitle>API Credentials & Connections</CardTitle>
+            <CardDescription>Securely manage API keys for LLM Providers, Brokers, and other third-party services like SerpAPI.</CardDescription>
           </CardHeader>
           <CardContent>
             <CredentialsForm />
