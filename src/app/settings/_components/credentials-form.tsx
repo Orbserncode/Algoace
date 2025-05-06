@@ -1,7 +1,7 @@
 // src/app/settings/_components/credentials-form.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray } from "react-hook-form";
 import { z } from "zod";
@@ -25,6 +25,8 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 // Placeholder services - replace with actual backend interaction
 import { testLLMConnection, testBrokerConnection, saveCredentials } from '@/services/settings-service';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch'; // Import Switch
 
 // --- LLM Provider Schema ---
 const llmProviderSchema = z.object({
@@ -39,18 +41,15 @@ type LLMProviderFormData = z.infer<typeof llmProviderSchema>;
 const knownBrokers = ["alpaca", "interactive_brokers", "coinbase", "kraken", "binance", "mock"] as const;
 type BrokerType = typeof knownBrokers[number];
 
-const baseBrokerSchema = z.object({
-    brokerType: z.enum(knownBrokers),
-});
-
-const alpacaSchema = baseBrokerSchema.extend({
+// Individual Broker Schemas
+const alpacaSchema = z.object({
     brokerType: z.literal("alpaca"),
     apiKey: z.string().min(1, "API Key is required for Alpaca."),
     apiSecret: z.string().min(1, "API Secret is required for Alpaca."),
     paperTrading: z.boolean().default(true),
 });
 
-const ibkrSchema = baseBrokerSchema.extend({
+const ibkrSchema = z.object({
      brokerType: z.literal("interactive_brokers"),
      accountNumber: z.string().min(1, "Account Number is required for IBKR."),
      host: z.string().optional().default("127.0.0.1"),
@@ -58,21 +57,40 @@ const ibkrSchema = baseBrokerSchema.extend({
      clientId: z.coerce.number().optional().default(1), // Default Client ID
 });
 
-// Add schemas for other brokers (Coinbase, Kraken, Binance, Mock) similarly
-// For simplicity, we'll use a generic schema for others for now
-const genericBrokerSchema = baseBrokerSchema.extend({
-    apiKey: z.string().optional(),
-    apiSecret: z.string().optional(),
-    // Add other common fields if needed
+const coinbaseSchema = z.object({
+    brokerType: z.literal("coinbase"),
+    apiKey: z.string().min(1, "API Key is required for Coinbase."),
+    apiSecret: z.string().min(1, "API Secret is required for Coinbase."),
+    // Add passphrase if needed for specific Coinbase API versions
 });
 
+const krakenSchema = z.object({
+    brokerType: z.literal("kraken"),
+    apiKey: z.string().min(1, "API Key is required for Kraken."),
+    apiSecret: z.string().min(1, "API Secret is required for Kraken."),
+    // Add specific Kraken fields if necessary
+});
+
+const binanceSchema = z.object({
+    brokerType: z.literal("binance"),
+    apiKey: z.string().min(1, "API Key is required for Binance."),
+    apiSecret: z.string().min(1, "API Secret is required for Binance."),
+    // Add specific Binance fields (e.g., subaccount, testnet flag) if necessary
+});
+
+const mockSchema = z.object({
+    brokerType: z.literal("mock"),
+    // No specific fields needed for mock
+});
 
 // Use a discriminated union for the broker part of the form
 const brokerSchema = z.discriminatedUnion("brokerType", [
     alpacaSchema,
     ibkrSchema,
-    // Add other specific broker schemas here
-    genericBrokerSchema // Fallback for others
+    coinbaseSchema,
+    krakenSchema,
+    binanceSchema,
+    mockSchema
 ]);
 type BrokerFormData = z.infer<typeof brokerSchema>;
 
@@ -99,15 +117,20 @@ const getBrokerFieldConfig = (brokerType: BrokerType | undefined) => {
             { name: 'port', label: 'Port (e.g., 7497 for Paper TWS)', type: 'number', required: false },
             { name: 'clientId', label: 'Client ID', type: 'number', required: false },
         ];
-        // Add cases for Coinbase, Kraken, Binance, Mock...
-        case 'coinbase':
-        case 'kraken':
-        case 'binance':
-             return [
-                { name: 'apiKey', label: `${brokerType.charAt(0).toUpperCase() + brokerType.slice(1)} API Key`, type: 'password', required: true },
-                { name: 'apiSecret', label: `${brokerType.charAt(0).toUpperCase() + brokerType.slice(1)} API Secret`, type: 'password', required: true },
-                // Add passphrase for Kraken etc. if needed
-             ];
+        case 'coinbase': return [
+            { name: 'apiKey', label: 'Coinbase API Key', type: 'password', required: true },
+            { name: 'apiSecret', label: 'Coinbase API Secret', type: 'password', required: true },
+        ];
+        case 'kraken': return [
+            { name: 'apiKey', label: 'Kraken API Key', type: 'password', required: true },
+            { name: 'apiSecret', label: 'Kraken API Secret', type: 'password', required: true },
+            // Add passphrase or 2FA setup instructions if relevant
+        ];
+        case 'binance': return [
+            { name: 'apiKey', label: 'Binance API Key', type: 'password', required: true },
+            { name: 'apiSecret', label: 'Binance API Secret', type: 'password', required: true },
+            // Add testnet/subaccount fields if needed
+        ];
          case 'mock': return []; // No fields needed for mock broker
         default: return [];
     }
@@ -195,7 +218,7 @@ export function CredentialsForm() {
         setIsSaving(true);
          console.log("Attempting to save credentials (secrets redacted):", {
             llmProviders: values.llmProviders?.map(p => ({ ...p, apiKey: p.apiKey ? '******' : '' })),
-            brokerConfig: values.brokerConfig ? { ...values.brokerConfig, apiKey: values.brokerConfig.apiKey ? '******' : '', apiSecret: values.brokerConfig.apiSecret ? '******' : '' } : undefined,
+             brokerConfig: values.brokerConfig ? { ...values.brokerConfig, apiKey: values.brokerConfig.apiKey ? '******' : '', apiSecret: (values.brokerConfig as any).apiSecret ? '******' : '' } : undefined,
          });
 
          // IMPORTANT: Send *only necessary* and potentially changed data to the backend.
@@ -264,7 +287,7 @@ export function CredentialsForm() {
                                          onValueChange={(value) => {
                                              // Reset brokerConfig fields when type changes, keeping brokerType
                                              const newConfig = { brokerType: value as BrokerType };
-                                             form.setValue('brokerConfig', newConfig, { shouldValidate: true });
+                                             form.setValue('brokerConfig', newConfig as any, { shouldValidate: true }); // Use 'as any' due to discriminated union complexity for RHF setValue
                                              field.onChange(value);
                                          }}
                                          value={field.value || ""} // Handle undefined initial value
@@ -301,7 +324,8 @@ export function CredentialsForm() {
                                         <FormControl>
                                              {brokerField.type === 'switch' ? (
                                                 <Switch
-                                                    checked={field.value}
+                                                    // Ensure value is boolean, default to false if undefined
+                                                    checked={!!field.value}
                                                     onCheckedChange={field.onChange}
                                                     disabled={isSaving || isTestingBroker}
                                                 />
@@ -310,7 +334,8 @@ export function CredentialsForm() {
                                                     type={brokerField.type === 'password' && !showSecrets ? 'password' : 'text'}
                                                     placeholder={`Enter ${brokerField.label}`}
                                                     {...field}
-                                                    // Handle potential number conversion if needed (or use coerce in schema)
+                                                     // Ensure value is a string for input, handle potential number conversion if needed (or use coerce in schema)
+                                                     value={field.value ?? ''}
                                                      onChange={(e) => field.onChange(brokerField.type === 'number' ? Number(e.target.value) || 0 : e.target.value)}
                                                     disabled={isSaving || isTestingBroker}
                                                 />
@@ -453,4 +478,4 @@ export function CredentialsForm() {
 }
 
 // Ensure components are exported
-export { Switch }; // Export Switch if not already exported elsewhere in ui
+// export { Switch }; // Removed export as it's likely already exported from ui index
