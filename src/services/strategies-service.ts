@@ -135,7 +135,7 @@ const simulateError = (probability = 0.1) => {
 export async function getStrategies(includeArchived: boolean = false): Promise<Strategy[]> {
   console.log(`Fetching strategies (includeArchived: ${includeArchived})...`);
   await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400)); // Slightly variable delay
-  simulateError(0.05); // 5% chance of error on fetch
+  // simulateError(0.05); // Removed simulation of error for reliability
 
   const filteredStrategies = includeArchived
     ? [...mockStrategies] // Return all if requested
