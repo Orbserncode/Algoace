@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts" // Keep this as the main import
-import { Candlestick } from "recharts" // Specifically import Candlestick if needed separately
+// Removed specific import for Candlestick as it's used as a component tag within ComposedChart
 
 import { cn } from "@/lib/utils"
 
@@ -364,5 +364,5 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
-  Candlestick, // Export Candlestick from Recharts
+  // Removed Candlestick export
 }

@@ -1,11 +1,11 @@
-// src/app/backtesting/_components/advanced-visualizations.tsx
+{// src/app/backtesting/_components/advanced-visualizations.tsx
 'use client';
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, Candlestick, ReferenceLine } from 'recharts';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts'; // Import ComposedChart and Candlestick directly
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart"; // Removed Candlestick import from here
 import type { BacktestTrade } from '@/services/backtesting-service'; // Import trade type
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from 'react';
 
@@ -226,7 +226,8 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                              <Skeleton className="h-full w-full" />
                          ) : hasOHLC && hasEnoughData ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                 <RechartsCandlestickChart
+                                 {/* Use ComposedChart which supports Candlestick */}
+                                 <ComposedChart
                                      data={chartData}
                                      margin={{ top: 5, right: 5, left: -15, bottom: 5 }}
                                  >
@@ -293,16 +294,15 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                         }}
                                      />
                                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-                                     {/* Candlestick series */}
+                                     {/* Candlestick series - use the component tag */}
                                      <Candlestick
                                          dataKey="value"
                                          fill="hsl(var(--primary))" // Base fill color
                                          stroke="hsl(var(--primary-foreground))" // Border color
                                          isAnimationActive={false} // Disable animation for performance with larger datasets
                                          // Colors are typically handled by the component based on open/close
-                                         // You might need custom logic or a different library for explicit up/down colors
                                      />
-                                 </RechartsCandlestickChart>
+                                 </ComposedChart>
                              </ResponsiveContainer>
                          ) : (
                              <div className="flex h-full w-full items-center justify-center text-muted-foreground">
@@ -335,8 +335,3 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
         </div>
     );
 }
-
-
-// Define CandlestickChart component (wrapper around Recharts)
-// Needed because Recharts doesn't export CandlestickChart directly
-const RechartsCandlestickChart = RechartsPrimitive.ComposedChart;
