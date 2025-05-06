@@ -26,20 +26,10 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-    DialogClose,
-} from "@/components/ui/dialog"; // Import Dialog for code view
 import type { Strategy } from '@/services/strategies-service';
-import { updateStrategy, archiveStrategy, deleteStrategyPermanently, getStrategyCode } from '@/services/strategies-service';
+import { updateStrategy, archiveStrategy, deleteStrategyPermanently } from '@/services/strategies-service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ScrollArea } from '@/components/ui/scroll-area'; // For code viewer
-import { Skeleton } from '@/components/ui/skeleton'; // For code loading
+import { StrategyCodeEditorDialog } from './strategy-code-editor-dialog'; // Import the new editor dialog
 
 interface StrategyTableProps {
   strategies: Strategy[];
@@ -50,11 +40,9 @@ interface StrategyTableProps {
 export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }: StrategyTableProps) {
   const { toast } = useToast();
   const [loadingAction, setLoadingAction] = useState<string | null>(null); // Format: "action:strategyId"
-  const [isCodeViewerOpen, setIsCodeViewerOpen] = useState(false);
-  const [currentCode, setCurrentCode] = useState<string | null>(null);
-  const [currentStrategyName, setCurrentStrategyName] = useState<string>('');
-  const [isCodeLoading, setIsCodeLoading] = useState(false);
-  const [codeError, setCodeError] = useState<string | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [selectedStrategyForEditor, setSelectedStrategyForEditor] = useState<Strategy | null>(null);
+
 
   const handleToggleStatus = async (strategy: Strategy) => {
     // Don't allow toggling for Archived strategies
@@ -89,36 +77,9 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
     }
   };
 
-   const handleViewCode = async (strategy: Strategy) => {
-     setIsCodeLoading(true);
-     setIsCodeViewerOpen(true);
-     setCurrentStrategyName(strategy.name);
-     setCurrentCode(null); // Clear previous code
-     setCodeError(null); // Clear previous error
-
-     try {
-        const code = await getStrategyCode(strategy.id);
-        if (code) {
-            setCurrentCode(code);
-        } else {
-            // Handle case where code is not found or applicable (e.g., AI strategy without explicit code storage)
-            setCurrentCode(`# No code available for this strategy type or ID: ${strategy.id}\n# Source: ${strategy.source || 'Unknown'}`);
-            if (!strategy.source || strategy.source !== 'Uploaded') {
-                 // Optionally inform user differently for non-uploaded strategies
-                 console.warn(`No specific code file expected for strategy source: ${strategy.source}`);
-            }
-        }
-     } catch (error) {
-         console.error(`Failed to fetch code for strategy ${strategy.id}:`, error);
-         setCodeError(`Failed to load strategy code. ${error instanceof Error ? error.message : 'Please try again.'}`);
-         toast({
-            title: "Error Loading Code",
-            description: `Could not load code for "${strategy.name}".`,
-            variant: "destructive",
-         });
-     } finally {
-         setIsCodeLoading(false);
-     }
+   const handleOpenEditor = (strategy: Strategy) => {
+     setSelectedStrategyForEditor(strategy);
+     setIsEditorOpen(true);
    };
 
 
@@ -217,7 +178,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
             <TableHead className="w-[100px] hidden md:table-cell">Source</TableHead>
             <TableHead className="text-right hidden sm:table-cell w-[120px]">P&L (USD)</TableHead>
             <TableHead className="text-right hidden lg:table-cell w-[100px]">Win Rate</TableHead>
-            <TableHead className="text-right w-[180px]">Actions</TableHead> {/* Increased width for more buttons */}
+            <TableHead className="text-right w-[200px]">Actions</TableHead> {/* Adjusted width */}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -232,8 +193,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
               const isToggling = loadingAction === `toggle:${strategy.id}`;
               const isArchiving = loadingAction === `archive:${strategy.id}`;
               const isDeleting = loadingAction === `delete:${strategy.id}`;
-              const isViewingCode = loadingAction === `viewCode:${strategy.id}`; // Use consistent pattern
-              const isAnyLoading = isToggling || isArchiving || isDeleting || isViewingCode;
+              const isAnyLoading = isToggling || isArchiving || isDeleting;
 
               return (
                 <TableRow key={strategy.id} className={cn(isAnyLoading && "opacity-60")}>
@@ -269,7 +229,7 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                        {isToggling && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
                        {isArchiving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
                        {isDeleting && <Loader2 className="h-4 w-4 animate-spin text-destructive mr-1" />}
-                       {isViewingCode && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-1" />}
+                       
 
                        {!isAnyLoading && (
                            <>
@@ -287,29 +247,17 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
                                   </Tooltip>
                                )}
 
-                               {/* View Code Button */}
+                               {/* Edit/View Code Button */}
                                <Tooltip>
                                   <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" aria-label="View Strategy Code" onClick={() => handleViewCode(strategy)} disabled={isAnyLoading}>
-                                          <Eye className="h-4 w-4" />
+                                      <Button variant="ghost" size="icon" aria-label="Edit Strategy Code" onClick={() => handleOpenEditor(strategy)} disabled={isAnyLoading}>
+                                          <Edit className="h-4 w-4" />
                                       </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                      <p>View Strategy Code</p>
+                                      <p>Edit/View Strategy Code</p>
                                   </TooltipContent>
                                </Tooltip>
-
-                               {/* Edit Button (Placeholder/Future) */}
-                              <Tooltip>
-                                  <TooltipTrigger asChild>
-                                       <Button variant="ghost" size="icon" aria-label="Edit Strategy" onClick={() => toast({ title: "Feature Not Implemented", description: `Editing strategy ${strategy.id} is not yet available.` })} disabled={isAnyLoading}>
-                                        <Edit className="h-4 w-4" />
-                                       </Button>
-                                  </TooltipTrigger>
-                                   <TooltipContent>
-                                      <p>Edit Strategy (Not Implemented)</p>
-                                   </TooltipContent>
-                              </Tooltip>
 
                                {/* Archive/Delete Button */}
                                <AlertDialog>
@@ -371,43 +319,14 @@ export function StrategyTable({ strategies, onStrategyUpdate, onStrategyDelete }
       </Table>
     </TooltipProvider>
 
-     {/* Code Viewer Dialog */}
-     <Dialog open={isCodeViewerOpen} onOpenChange={setIsCodeViewerOpen}>
-        <DialogContent className="sm:max-w-[80vw] lg:max-w-[60vw] h-[80vh] flex flex-col">
-             <DialogHeader>
-                 <DialogTitle>Strategy Code: {currentStrategyName}</DialogTitle>
-                 <DialogDescription>
-                     Viewing the code for strategy "{currentStrategyName}". Read-only.
-                 </DialogDescription>
-             </DialogHeader>
-             <ScrollArea className="flex-1 border rounded-md p-4 bg-muted/30">
-                 {isCodeLoading && (
-                     <div className="space-y-2">
-                        <Skeleton className="h-4 w-[80%]" />
-                        <Skeleton className="h-4 w-[90%]" />
-                        <Skeleton className="h-4 w-[70%]" />
-                        <Skeleton className="h-4 w-[85%]" />
-                     </div>
-                 )}
-                 {codeError && <p className="text-destructive">{codeError}</p>}
-                 {!isCodeLoading && !codeError && currentCode && (
-                    <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-                        <code>{currentCode}</code>
-                    </pre>
-                 )}
-                  {!isCodeLoading && !codeError && !currentCode && (
-                       <p className="text-muted-foreground">No code content loaded.</p>
-                  )}
-             </ScrollArea>
-             <DialogFooter>
-                 <DialogClose asChild>
-                     <Button type="button" variant="secondary">
-                         Close
-                     </Button>
-                 </DialogClose>
-             </DialogFooter>
-        </DialogContent>
-     </Dialog>
+     {/* Code Editor Dialog */}
+     {selectedStrategyForEditor && (
+        <StrategyCodeEditorDialog
+            isOpen={isEditorOpen}
+            onOpenChange={setIsEditorOpen}
+            strategy={selectedStrategyForEditor}
+        />
+     )}
     </>
   );
 }
