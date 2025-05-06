@@ -60,20 +60,25 @@ def delete_strategy(*, session: Session, strategy_id: int) -> bool:
 
 def create_agent(*, session: Session, agent_in: schemas.AgentCreate) -> AgentModel:
     """Creates a new agent record in the database after validating its config."""
-    # Validate the config based on agent type
     try:
-        # The config from AgentCreate is a dict, parse it using the utility
-        parsed_config = schemas.parse_agent_config(agent_in.type, agent_in.config or {})
+        # agent_in.type is already AgentTypeEnumSchema from the request
+        # Pass its .value (string) to parse_agent_config
+        parsed_config = schemas.parse_agent_config(agent_in.type.value, agent_in.config or {})
     except ValidationError as e:
-        # Re-raise or handle as a specific HTTP error in the API layer
-        raise ValueError(f"Invalid configuration for agent type {agent_in.type}: {e.errors()}")
+        raise ValueError(f"Invalid configuration for agent type {agent_in.type.value}: {e.errors()}")
 
-    # Create the SQLModel object for the database
-    # Pass the parsed_config.model_dump() to ensure the validated and typed config is stored
-    db_agent = AgentModel.model_validate({
-        **agent_in.model_dump(exclude={'config'}), # Exclude raw config dict
-        'config': parsed_config.model_dump() # Use the validated model's dict
-    })
+    # Convert AgentTypeEnumSchema to models.AgentTypeEnum for DB model
+    try:
+        db_agent_type = models.AgentTypeEnum(agent_in.type.value)
+    except ValueError:
+        # This should not happen if AgentTypeEnumSchema mirrors models.AgentTypeEnum
+        raise ValueError(f"Invalid agent type value: {agent_in.type.value}")
+
+    db_agent_data = agent_in.model_dump(exclude={'config', 'type'})
+    db_agent_data['config'] = parsed_config.model_dump()
+    db_agent_data['type'] = db_agent_type # Use the models.AgentTypeEnum
+
+    db_agent = AgentModel.model_validate(db_agent_data)
     
     session.add(db_agent)
     session.commit()
@@ -101,14 +106,21 @@ def update_agent(*, session: Session, agent_id: int, agent_in: schemas.AgentUpda
     update_data = agent_in.model_dump(exclude_unset=True)
     
     if 'config' in update_data and update_data['config'] is not None:
-        # If config is being updated, validate it against the agent's type
-        # The agent's type itself cannot be changed in an update in this model
         try:
-            parsed_config = schemas.parse_agent_config(db_agent.type, update_data['config'])
-            update_data['config'] = parsed_config.model_dump() # Store validated config
+            # db_agent.type is models.AgentTypeEnum, pass its .value
+            parsed_config = schemas.parse_agent_config(db_agent.type.value, update_data['config'])
+            update_data['config'] = parsed_config.model_dump()
         except ValidationError as e:
-            raise ValueError(f"Invalid new configuration for agent type {db_agent.type}: {e.errors()}")
+            raise ValueError(f"Invalid new configuration for agent type {db_agent.type.value}: {e.errors()}")
     
+    # Handle status update: convert schema enum to model enum
+    if 'status' in update_data and update_data['status'] is not None:
+        try:
+            # update_data['status'] is AgentStatusEnumSchema
+            update_data['status'] = models.AgentStatusEnum(update_data['status'].value)
+        except ValueError:
+            raise ValueError(f"Invalid status value: {update_data['status']}")
+
     for key, value in update_data.items():
         setattr(db_agent, key, value)
 
@@ -129,3 +141,4 @@ def delete_agent(*, session: Session, agent_id: int) -> bool:
     return True
 
 # TODO: Add CRUD functions for other resources (Logs, etc.) later
+
