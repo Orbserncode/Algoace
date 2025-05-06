@@ -26,15 +26,15 @@ import { cn } from '@/lib/utils'; // Ensure cn is imported
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_FILE_TYPES = ["text/x-python", "application/x-python-code", "text/plain", ""]; // Allow empty type for some browser variations
 
-// Updated schema to better handle FileList and potential undefined
+// Use z.any() for server-side compatibility, refinements handle client-side checks
 const formSchema = z.object({
   name: z.string().min(3, { message: "Strategy name must be at least 3 characters." }),
   description: z.string().min(10, { message: "Description must be at least 10 characters." }),
-  strategyFile: z.instanceof(FileList)
-    .refine((files) => files?.length === 1, "Python file is required.")
-    .refine((files) => files?.[0]?.size <= MAX_FILE_SIZE, `Max file size is 5MB.`)
+  strategyFile: z.any() // Use z.any() to avoid SSR error with FileList
+    .refine((files): files is FileList => typeof window !== 'undefined' && files instanceof FileList && files.length > 0, "Python file is required.") // Check instance and length client-side
+    .refine((files: FileList) => files?.[0]?.size <= MAX_FILE_SIZE, `Max file size is 5MB.`)
     .refine(
-      (files) => ACCEPTED_FILE_TYPES.includes(files?.[0]?.type),
+      (files: FileList) => ACCEPTED_FILE_TYPES.includes(files?.[0]?.type),
       ".py file type is required."
     ),
 });
@@ -80,7 +80,7 @@ export function AddStrategyForm({ onStrategyAdded }: AddStrategyFormProps) {
 
   async function onSubmit(values: FormData) {
     setIsSubmitting(true);
-    // FileList should contain the file
+    // FileList should contain the file due to client-side refinement
     const file = values.strategyFile[0];
 
      // Basic client-side file reading is not needed here as the service mock doesn't use it.
