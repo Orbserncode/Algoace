@@ -2,6 +2,7 @@
 'use client';
 
 // Import Candlestick directly from recharts, it's used as a tag <Candlestick />
+// Removed Candlestick from this import as it's not a named export
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
