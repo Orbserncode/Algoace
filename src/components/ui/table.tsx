@@ -51,6 +51,7 @@ const TableFooter = React.forwardRef<
 ))
 TableFooter.displayName = "TableFooter"
 
+// Updated TableRow to remove potential whitespace causing hydration errors
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
@@ -62,7 +63,7 @@ const TableRow = React.forwardRef<
       className
     )}
     {...props}
-  >{children}</tr> // Ensure children are directly rendered without extra whitespace
+  >{children}</tr> // Render children directly inside the <tr> tags without extra whitespace
 ))
 TableRow.displayName = "TableRow"
 

@@ -1,9 +1,10 @@
 // src/app/backtesting/_components/advanced-visualizations.tsx
 'use client';
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts'; // Import ComposedChart and Candlestick directly
+// Import Candlestick directly from recharts, it's used as a tag <Candlestick />
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Pie, PieChart, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart, Candlestick } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart"; // Removed Candlestick import from here
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from "@/components/ui/chart";
 import type { BacktestTrade } from '@/services/backtesting-service'; // Import trade type
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,10 +38,15 @@ const groupTradesByMonth = (trades: BacktestTrade[]) => {
     const monthlyPnl: Record<string, number> = {};
     trades.forEach(trade => {
         try {
+            // Ensure exitTimestamp is a valid date string before parsing
+            if (!trade.exitTimestamp || isNaN(new Date(trade.exitTimestamp).getTime())) {
+                console.warn("Invalid or missing trade exit timestamp for grouping:", trade);
+                return; // Skip this trade
+            }
             const month = new Date(trade.exitTimestamp).toISOString().slice(0, 7); // YYYY-MM
             monthlyPnl[month] = (monthlyPnl[month] || 0) + trade.pnl;
-        } catch {
-            console.warn("Could not parse trade timestamp for grouping:", trade.exitTimestamp);
+        } catch(e) {
+            console.error("Error processing trade timestamp for grouping:", trade.exitTimestamp, e);
         }
     });
     return Object.entries(monthlyPnl)
@@ -65,11 +71,18 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
 
      // Filter candlestick data based on selected range
      const filteredCandlestickData = useMemo(() => {
-        if (candlestickRange === "all" || equityCurve.length === 0) {
-            return equityCurve;
+        if (!equityCurve || equityCurve.length === 0) return []; // Handle empty or undefined equityCurve
+
+        // Filter out points without valid dates first
+        const validEquityCurve = equityCurve.filter(d => d.date && !isNaN(new Date(d.date).getTime()));
+        if (validEquityCurve.length === 0) return [];
+
+
+        if (candlestickRange === "all") {
+            return validEquityCurve;
         }
 
-        const endDate = new Date(equityCurve[equityCurve.length - 1].date);
+        const endDate = new Date(validEquityCurve[validEquityCurve.length - 1].date);
         let startDate = new Date(endDate);
 
         switch (candlestickRange) {
@@ -83,11 +96,12 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                 startDate.setFullYear(startDate.getFullYear() - 1);
                 break;
             default:
-                return equityCurve; // Should not happen
+                return validEquityCurve; // Should not happen if range is valid
         }
 
-        const startIndex = equityCurve.findIndex(d => new Date(d.date) >= startDate);
-        return startIndex === -1 ? [] : equityCurve.slice(startIndex);
+        // Find index using the valid curve
+        const startIndex = validEquityCurve.findIndex(d => new Date(d.date) >= startDate);
+        return startIndex === -1 ? [] : validEquityCurve.slice(startIndex);
 
      }, [equityCurve, candlestickRange]);
 
@@ -138,6 +152,17 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                  <CardDescription>Ratio of winning vs. losing trades.</CardDescription>
              </CardHeader>
              <CardContent className="flex justify-center">
+                 {/* Define CSS variables for fill colors */}
+                 <style jsx global>{`
+                     :root {
+                        --color-winning: hsl(var(--chart-2));
+                        --color-losing: hsl(var(--destructive));
+                     }
+                     .dark {
+                        --color-winning: hsl(var(--chart-2));
+                        --color-losing: hsl(var(--destructive));
+                     }
+                 `}</style>
                  <ChartContainer config={pieChartConfig} className="aspect-square h-[200px]">
                       {isLoading ? (
                          <Skeleton className="h-full w-full rounded-full" />
@@ -185,31 +210,36 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
         const hasEnoughData = filteredCandlestickData.length > 1;
 
         // Format data for candlestick (needs date, open, high, low, close)
-        const chartData = hasOHLC ? filteredCandlestickData.map(d => ({
+        // Ensure data is sorted by date ascending
+        const chartData = hasOHLC ? filteredCandlestickData
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .map(d => ({
             date: d.date, // Keep original date string for XAxis
             // Values should be numbers: [open, high, low, close]
-            value: [d.open!, d.high!, d.low!, d.close]
+            value: [d.open!, d.high!, d.low!, d.close!] // Ensure values are numbers
         })) : [];
 
         // Calculate domain for Y-axis with padding
         let yDomain: [number, number] = [0, 10000]; // Default domain
         if (hasOHLC && hasEnoughData) {
-            const lows = filteredCandlestickData.map(d => d.low!);
-            const highs = filteredCandlestickData.map(d => d.high!);
-            const minVal = Math.min(...lows);
-            const maxVal = Math.max(...highs);
-            const padding = (maxVal - minVal) * 0.1;
-            yDomain = [Math.max(0, minVal - padding), maxVal + padding];
+            const lows = filteredCandlestickData.map(d => d.low!).filter(v => typeof v === 'number');
+            const highs = filteredCandlestickData.map(d => d.high!).filter(v => typeof v === 'number');
+            if (lows.length > 0 && highs.length > 0) {
+                const minVal = Math.min(...lows);
+                const maxVal = Math.max(...highs);
+                const padding = (maxVal - minVal) * 0.1 || (maxVal * 0.1); // Add padding, handle minVal=maxVal case
+                yDomain = [Math.max(0, minVal - padding), maxVal + padding];
+            }
         }
 
         return (
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                      <div>
-                         <CardTitle>Price Candlestick Chart</CardTitle>
-                         <CardDescription>Visualizes price movement over the selected period.</CardDescription>
+                         <CardTitle>Equity Candlestick Chart</CardTitle>
+                         <CardDescription>Visualizes equity movement over the selected period.</CardDescription>
                      </div>
-                     <Select value={candlestickRange} onValueChange={setCandlestickRange} disabled={isLoading}>
+                     <Select value={candlestickRange} onValueChange={setCandlestickRange} disabled={isLoading || !hasOHLC || !hasEnoughData}>
                          <SelectTrigger className="w-[100px]">
                              <SelectValue placeholder="Range" />
                          </SelectTrigger>
@@ -230,7 +260,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                  {/* Use ComposedChart which supports Candlestick */}
                                  <ComposedChart
                                      data={chartData}
-                                     margin={{ top: 5, right: 5, left: -15, bottom: 5 }}
+                                     margin={{ top: 5, right: 5, left: 0, bottom: 5 }} // Adjust left margin
                                  >
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis
@@ -240,10 +270,11 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                         tickMargin={8}
                                         fontSize={10}
                                         interval="preserveStartEnd" // Adjust interval for better readability
-                                        minTickGap={50}
+                                        minTickGap={40} // Reduce gap for potentially more ticks
                                         tickFormatter={(value) => {
                                             try {
-                                                return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                                // Display date in a compact format MM/DD
+                                                return new Date(value).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
                                             } catch { return value; }
                                         }}
                                     />
@@ -255,56 +286,63 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                         tickMargin={8}
                                         fontSize={10}
                                         tickFormatter={(value) => `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                        width={50} // Give Y axis some space
                                     />
                                     <RechartsTooltip
                                         cursor={{ strokeDasharray: '3 3' }}
                                         content={({ active, payload, label }) => {
                                              if (active && payload && payload.length) {
                                                  const data = payload[0].payload; // Access the raw data point
-                                                 const [open, high, low, close] = data.value;
-                                                 return (
-                                                     <div className="rounded-lg border bg-background p-2 shadow-sm">
-                                                         <div className="grid grid-cols-2 gap-2">
-                                                             <div className="flex flex-col">
-                                                                 <span className="text-[0.70rem] uppercase text-muted-foreground">Date</span>
-                                                                 <span className="font-bold">{label}</span>
-                                                             </div>
-                                                              <div className="flex flex-col">
-                                                                 <span className="text-[0.70rem] uppercase text-muted-foreground">Close</span>
-                                                                  <span className={`font-bold ${close >= open ? 'text-green-600' : 'text-red-600'}`}>
-                                                                     ${close.toFixed(2)}
-                                                                  </span>
-                                                             </div>
-                                                              <div className="flex flex-col">
-                                                                 <span className="text-[0.70rem] uppercase text-muted-foreground">Open</span>
-                                                                 <span className="font-bold text-muted-foreground">${open.toFixed(2)}</span>
-                                                             </div>
-                                                               <div className="flex flex-col">
-                                                                 <span className="text-[0.70rem] uppercase text-muted-foreground">High</span>
-                                                                 <span className="font-bold text-muted-foreground">${high.toFixed(2)}</span>
-                                                             </div>
-                                                              <div className="flex flex-col">
-                                                                 <span className="text-[0.70rem] uppercase text-muted-foreground">Low</span>
-                                                                 <span className="font-bold text-muted-foreground">${low.toFixed(2)}</span>
+                                                 // Ensure data.value is an array and has 4 elements
+                                                 if (Array.isArray(data.value) && data.value.length === 4) {
+                                                     const [open, high, low, close] = data.value;
+                                                     // Format date for tooltip
+                                                     const formattedDate = new Date(label).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+                                                     return (
+                                                         <div className="rounded-lg border bg-background p-2 shadow-sm">
+                                                             <div className="grid grid-cols-2 gap-2">
+                                                                 <div className="flex flex-col">
+                                                                     <span className="text-[0.70rem] uppercase text-muted-foreground">Date</span>
+                                                                     <span className="font-bold">{formattedDate}</span>
+                                                                 </div>
+                                                                  <div className="flex flex-col">
+                                                                     <span className="text-[0.70rem] uppercase text-muted-foreground">Close</span>
+                                                                      <span className={`font-bold ${close >= open ? 'text-green-600' : 'text-red-600'}`}>
+                                                                         ${close?.toFixed(2) ?? 'N/A'}
+                                                                      </span>
+                                                                 </div>
+                                                                  <div className="flex flex-col">
+                                                                     <span className="text-[0.70rem] uppercase text-muted-foreground">Open</span>
+                                                                     <span className="font-bold text-muted-foreground">${open?.toFixed(2) ?? 'N/A'}</span>
+                                                                 </div>
+                                                                   <div className="flex flex-col">
+                                                                     <span className="text-[0.70rem] uppercase text-muted-foreground">High</span>
+                                                                     <span className="font-bold text-muted-foreground">${high?.toFixed(2) ?? 'N/A'}</span>
+                                                                 </div>
+                                                                  <div className="flex flex-col">
+                                                                     <span className="text-[0.70rem] uppercase text-muted-foreground">Low</span>
+                                                                     <span className="font-bold text-muted-foreground">${low?.toFixed(2) ?? 'N/A'}</span>
+                                                                 </div>
                                                              </div>
                                                          </div>
-                                                     </div>
-                                                 );
+                                                     );
+                                                 }
                                              }
                                              return null;
                                         }}
                                      />
                                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                                      {/* Candlestick series - use the component tag */}
+                                     {/* Ensure correct dataKey for Candlestick */}
                                      <Candlestick
-                                         dataKey="value"
+                                         dataKey="value" // This should match the key containing the [open, high, low, close] array
                                          fill="hsl(var(--primary))" // Base fill color
                                          stroke="hsl(var(--primary-foreground))" // Border color
                                          isAnimationActive={false} // Disable animation for performance with larger datasets
-                                         // Colors are typically handled by the component based on open/close
-                                         // You can customize colors using props like `upColor`, `downColor` if needed
-                                         // upColor="hsl(var(--chart-2))"
-                                         // downColor="hsl(var(--destructive))"
+                                         // Recharts automatically handles up/down colors
+                                         // upColor="hsl(var(--chart-2))" // Optional override
+                                         // downColor="hsl(var(--destructive))" // Optional override
                                      />
                                  </ComposedChart>
                              </ResponsiveContainer>
