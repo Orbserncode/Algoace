@@ -289,7 +289,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                                         tickFormatter={(value) => `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                         width={50} // Give Y axis some space
                                     />
-                                    <RechartsPrimitive.Tooltip
+                                    <RechartsTooltip
                                         cursor={{ strokeDasharray: '3 3' }}
                                         content={({ active, payload, label }) => {
                                              if (active && payload && payload.length) {

@@ -3,7 +3,7 @@
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts" // Keep this as the main import
-import { Candlestick as RechartsCandlestick } from "recharts" // Import Candlestick with an alias
+// REMOVED: import { Candlestick as RechartsCandlestick } from "recharts" // This was incorrect
 
 import { cn } from "@/lib/utils"
 
@@ -365,5 +365,8 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
-  RechartsCandlestick as Candlestick, // Export the aliased Candlestick
+  // Expose RechartsPrimitive.Candlestick directly if it's used as a component tag
+  // This assumes Candlestick is a direct export or part of the RechartsPrimitive namespace.
+  // If it's a component, it needs to be capitalized.
+  RechartsPrimitive, // Export the whole namespace
 }
