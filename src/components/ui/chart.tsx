@@ -364,5 +364,4 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
-  // Removed Candlestick export
 }
