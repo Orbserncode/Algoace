@@ -6,7 +6,9 @@ from pydantic import ValidationError as PydanticValidationError, BaseModel
 
 from backend import crud, schemas, models
 from backend.database import get_session
-from backend.ai_agents.base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput # Import new base
+# Import both implementations to support gradual migration
+from backend.ai_agents.base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput
+from backend.ai_agents.base_agent_simplified import SimplifiedAgent
 from backend.ai_agents.strategy_coding_agent import GenerateStrategyInput # Specific input
 
 router = APIRouter(
@@ -153,9 +155,14 @@ async def run_generate_strategy_task(
     """
     try:
         # PydanticAIAgent.get_agent_instance returns a specific agent instance like StrategyCodingAIAgent
-        agent_instance = PydanticAIAgent.get_agent_instance(agent_id=agent_id, session=session)
+        # Try to use the simplified agent first
+        try:
+            agent_instance = SimplifiedAgent.get_agent_instance(agent_id=agent_id, session=session)
+        except (ImportError, NotImplementedError):
+            # Fall back to PydanticAIAgent if simplified version fails
+            agent_instance = PydanticAIAgent.get_agent_instance(agent_id=agent_id, session=session)
         
-        if not isinstance(agent_instance, PydanticAIAgent) or agent_instance.agent_model.type != models.AgentTypeEnum.STRATEGY_CODING:
+        if agent_instance.agent_model.type != models.AgentTypeEnum.STRATEGY_CODING:
              raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agent is not a Strategy Coding Agent or type mismatch.")
         
         # agent_instance is now the specific agent type, e.g., StrategyCodingAIAgent
@@ -189,7 +196,12 @@ async def run_generic_agent_task( # Renamed to avoid conflict
     DEPRECATED: Execute a generic task. Use specific task endpoints like /run-generate-strategy.
     """
     try:
-        agent_instance = PydanticAIAgent.get_agent_instance(agent_id=agent_id, session=session)
+        # Try to use the simplified agent first
+        try:
+            agent_instance = SimplifiedAgent.get_agent_instance(agent_id=agent_id, session=session)
+        except (ImportError, NotImplementedError):
+            # Fall back to PydanticAIAgent if simplified version fails
+            agent_instance = PydanticAIAgent.get_agent_instance(agent_id=agent_id, session=session)
         
         # Validate and parse task_specific_input against the agent's specific input_schema
         try:

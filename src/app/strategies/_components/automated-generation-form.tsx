@@ -26,7 +26,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 import { toast } from "@/hooks/use-toast";
-import { suggestStrategyConfig, generateAndTestStrategyFromSuggestion, Strategy } from '@/services/strategies-service'; // Import service functions
+import {
+  suggestStrategyConfig,
+  generateAndTestStrategyFromSuggestion,
+  scheduleStrategyGeneration,
+  Strategy
+} from '@/services/strategies-service'; // Import service functions
 import { SuggestStrategyConfigInput, SuggestStrategyConfigOutput } from '@/ai/flows/suggest-strategy-config'; // Keep type import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'; // Import Card components
 import { Badge } from '@/components/ui/badge'; // Import Badge
@@ -102,6 +107,8 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
         form.setValue("historicalDataInput", ""); // Clear the invalid input
     }
 
+    // Check if this is a scheduled generation
+    const isScheduled = values.generationSchedule !== 'manual';
 
     try {
       // 1. Get Suggestion from AI
@@ -116,6 +123,28 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
       const suggestionResult = await suggestStrategyConfig(suggestionInput);
       console.log("Genkit suggestion result:", suggestionResult);
       setSuggestedConfig(suggestionResult); // Store the suggestion
+
+      // If this is a scheduled generation, use the scheduling service
+      if (isScheduled) {
+        const generationConfig = {
+          marketConditions: values.marketConditions,
+          riskTolerance: values.riskTolerance,
+          historicalData: historicalDataToUse,
+          customPrompt: values.customPrompt,
+          autoDeploy: values.autoDeploy,
+          suggestedConfig: suggestionResult
+        };
+        
+        const result = await scheduleStrategyGeneration(values.generationSchedule, generationConfig);
+        
+        toast({
+          title: "Strategy Generation Scheduled",
+          description: `Strategy generation has been scheduled with ${values.generationSchedule} frequency.`,
+          variant: "default",
+        });
+        setGenerationState(GenerationState.IDLE);
+        return;
+      }
 
       toast({
         title: "Strategy Suggestion Ready",
@@ -242,12 +271,12 @@ export function AutomatedGenerationForm({ onStrategyGenerated }: AutomatedGenera
                   </FormControl>
                   <SelectContent>
                     <SelectItem value="manual">Manual Trigger</SelectItem>
-                    <SelectItem value="startup" disabled>On Startup (Not Implemented)</SelectItem>
-                    <SelectItem value="daily" disabled>Daily (Not Implemented)</SelectItem>
-                    <SelectItem value="weekly" disabled>Weekly (Not Implemented)</SelectItem>
+                    <SelectItem value="startup">On Startup</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
                   </SelectContent>
                 </Select>
-                <FormDescription>How often the agent should attempt generation (only manual trigger currently active).</FormDescription>
+                <FormDescription>How often the agent should attempt generation. Scheduled options will run automatically at the specified intervals.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

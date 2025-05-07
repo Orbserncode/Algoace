@@ -7,11 +7,13 @@ import { PerformanceChart } from './_components/performance-chart';
 import { ActivityLog } from './_components/activity-log';
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, Eye, ArrowLeft } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
     getPortfolioHistory,
     getActivityLogs,
     getKeyMetrics,
     getStrategyPerformance, // Import strategy-specific function
+    getStrategyTrades, // Add missing import
     PerformanceDataPoint,
     LogEntry,
     KeyMetrics,

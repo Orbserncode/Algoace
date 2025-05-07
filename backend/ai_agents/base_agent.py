@@ -1,10 +1,15 @@
-# backend/ai_agents/base_agent.py
+"""
+Base agent implementation using Pydantic AI.
+This serves as the foundation for all specialized agents in the system.
+"""
 from pydantic import BaseModel, Field
-from typing import Generic, TypeVar, Type, Dict, Any, Optional, List
+from typing import Generic, TypeVar, Type, Dict, Any, Optional, List, ClassVar
 from sqlmodel import Session
 from pydantic_ai import Instructor
-from pydantic_ai.llm import LLM # For type hinting
+from pydantic_ai.llm import LLM
 from pydantic_ai.mode import Mode
+from pydantic_ai import Agent as PydanticAgent
+from dataclasses import dataclass
 
 from backend import schemas, models
 from backend.ai_agents.llm_clients import get_llm_client
@@ -24,19 +29,37 @@ class AgentTaskOutput(BaseModel):
     error_details: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
 
+@dataclass
+class AgentDependencies:
+    """Dependencies for agents, including LLM client and other services."""
+    llm_client: LLM
+    # Add other dependencies as needed, such as:
+    # database_session: Session
+    # broker_client: Optional[Any] = None
+    # market_data_provider: Optional[Any] = None
+
 class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
     """
-    Base class for agents using the pydantic-ai framework.
+    Base class for agents using the Pydantic AI framework.
     """
     agent_model: models.Agent
-    config: schemas.AgentConfigUnion # Parsed config object
-    input_schema: Type[InputSchema]
-    output_schema: Type[OutputSchema]
+    config: schemas.AgentConfigUnion
+    input_schema: ClassVar[Type[InputSchema]]
+    output_schema: ClassVar[Type[OutputSchema]]
     
     llm_client: LLM
     instructor: Instructor
+    pydantic_agent: PydanticAgent
+    dependencies: AgentDependencies
 
     def __init__(self, agent_model: models.Agent, session: Session):
+        """
+        Initialize the agent with its model and configuration.
+        
+        Args:
+            agent_model: The database model representing this agent
+            session: Database session for persistence
+        """
         if not agent_model.config:
             raise ValueError(f"Agent {agent_model.name} is missing configuration.")
         
@@ -71,6 +94,12 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
             # Depending on policy, either raise or allow agent to initialize without LLM
             raise ConnectionError(f"Could not initialize LLM for agent {self.agent_model.name}: {e}") from e
             
+        # Initialize dependencies
+        self.dependencies = AgentDependencies(
+            llm_client=self.llm_client,
+            # Add other dependencies as needed
+        )
+            
         # Initialize Instructor with enabled tools
         enabled_tool_names: List[schemas.ToolNameEnum] = getattr(self.config, 'enabledTools', [])
         
@@ -88,7 +117,6 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
             else:
                 self.log_message(f"Invalid tool entry '{tool_name_val}' in config, skipping.", level="warn")
 
-
         pydantic_ai_tools = get_enabled_tools_for_instructor(parsed_enabled_tool_names)
         
         self.instructor = Instructor(
@@ -97,19 +125,46 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
             tools=pydantic_ai_tools,
             # TODO: Add chat_engine, retry options from config if needed
         )
+        
+        # Initialize the Pydantic AI agent
+        # This will be implemented by subclasses
+        self.pydantic_agent = self._create_pydantic_agent()
+        
         self.log_message(f"PydanticAIAgent initialized for {self.agent_model.name} with {len(pydantic_ai_tools)} tools.")
 
+    def _create_pydantic_agent(self) -> PydanticAgent:
+        """
+        Create the Pydantic AI agent instance.
+        This should be implemented by subclasses to create the specific agent type.
+        
+        Returns:
+            A configured Pydantic AI agent
+        """
+        raise NotImplementedError("Subclasses must implement _create_pydantic_agent")
 
     async def run(self, task_input: InputSchema, session: Session) -> OutputSchema:
         """
         Main method to execute the agent's primary task.
         Subclasses MUST override this to define the interaction with the LLM
-        using self.instructor.
+        using self.instructor or self.pydantic_agent.
+        
+        Args:
+            task_input: The input data for the task
+            session: Database session for persistence
+            
+        Returns:
+            The task output
         """
         raise NotImplementedError("The 'run' method must be implemented by subclasses.")
 
     def _update_agent_stats(self, success: bool, session: Session):
-        """Helper to update agent's tasksCompleted or errors count."""
+        """
+        Helper to update agent's tasksCompleted or errors count.
+        
+        Args:
+            success: Whether the task was successful
+            session: Database session for persistence
+        """
         # Ensure agent_model is loaded in the current session if it's not already
         # This is a common pattern if the agent_model was passed from a different session context.
         # However, if session management is handled carefully, this might not be strictly necessary.
@@ -133,13 +188,32 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
         self.agent_model.tasksCompleted = db_agent.tasksCompleted
         self.agent_model.errors = db_agent.errors
 
-
     def log_message(self, message: str, level: str = "info"):
+        """
+        Log a message with the appropriate level.
+        
+        Args:
+            message: The message to log
+            level: The log level (info, warn, error, debug)
+        """
         print(f"[{level.upper()}] Agent {self.agent_model.name}: {message}")
 
     @classmethod
     def get_agent_instance(cls, agent_id: int, session: Session) -> 'PydanticAIAgent':
-        """Factory method to get a specific agent instance by ID."""
+        """
+        Factory method to get a specific agent instance by ID.
+        
+        Args:
+            agent_id: The ID of the agent to retrieve
+            session: Database session for persistence
+            
+        Returns:
+            An initialized agent instance
+            
+        Raises:
+            ValueError: If the agent is not found
+            NotImplementedError: If the agent type is not supported
+        """
         db_agent = session.get(models.Agent, agent_id) # Use session.get for direct PK lookup
         if not db_agent:
             raise ValueError(f"Agent with ID {agent_id} not found.")
@@ -161,9 +235,18 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
         if db_agent.type == models.AgentTypeEnum.STRATEGY_CODING:
             from .strategy_coding_agent import StrategyCodingAIAgent
             return StrategyCodingAIAgent(agent_model=db_agent, session=session)
-        # elif db_agent.type == models.AgentTypeEnum.EXECUTION:
-        #     from .execution_agent import ExecutionAIAgent
-        #     return ExecutionAIAgent(agent_model=db_agent, session=session)
+        elif db_agent.type == models.AgentTypeEnum.RESEARCH:
+            from .research_agent import ResearchAIAgent
+            return ResearchAIAgent(agent_model=db_agent, session=session)
+        elif db_agent.type == models.AgentTypeEnum.PORTFOLIO:
+            from .portfolio_agent import PortfolioAIAgent
+            return PortfolioAIAgent(agent_model=db_agent, session=session)
+        elif db_agent.type == models.AgentTypeEnum.RISK:
+            from .risk_agent import RiskAIAgent
+            return RiskAIAgent(agent_model=db_agent, session=session)
+        elif db_agent.type == models.AgentTypeEnum.EXECUTION:
+            from .execution_agent import ExecutionAIAgent
+            return ExecutionAIAgent(agent_model=db_agent, session=session)
         # Add other agent types here
         else:
             raise NotImplementedError(f"Agent type {db_agent.type.value} does not have a PydanticAIAgent implementation.")

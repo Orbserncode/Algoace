@@ -2,8 +2,8 @@ from typing import List, Optional, Type, Union
 from sqlmodel import Session, select
 from pydantic import ValidationError, BaseModel as PydanticBaseModel # Import for catching validation errors
 
-from . import models, schemas # Import schemas for validation
-from .models import Agent as AgentModel # Alias to avoid conflict with schemas.Agent
+import models, schemas # Import schemas for validation
+from models import Agent as AgentModel # Alias to avoid conflict with schemas.Agent
 
 # === Strategy CRUD ===
 
@@ -50,6 +50,27 @@ def delete_strategy(*, session: Session, strategy_id: int) -> bool:
     session.delete(db_strategy)
     session.commit()
     return True
+
+
+def get_strategies_by_schedule(*, session: Session, schedule_type: Optional[str] = None) -> List[models.Strategy]:
+    """
+    Gets strategies with scheduled generation.
+    
+    Args:
+        session: Database session
+        schedule_type: Optional filter for specific schedule type ('startup', 'daily', 'weekly')
+                      If None, returns all strategies with any schedule
+    
+    Returns:
+        List of Strategy objects with scheduled generation
+    """
+    if schedule_type:
+        statement = select(models.Strategy).where(models.Strategy.generation_schedule == schedule_type)
+    else:
+        statement = select(models.Strategy).where(models.Strategy.generation_schedule.is_not(None))
+    
+    strategies = session.exec(statement).all()
+    return strategies
 
 
 # === Agent CRUD ===

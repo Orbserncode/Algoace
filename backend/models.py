@@ -1,6 +1,7 @@
 from typing import Optional, List, Any, Dict # Added List, Any, Dict
 from sqlmodel import Field, SQLModel, Column # Keep SQLModel import
 from sqlalchemy import String, JSON # Use SQLAlchemy's String and JSON type
+from datetime import datetime
 from enum import Enum
 
 # Shared properties between Create/Update schemas and the DB model
@@ -12,6 +13,10 @@ class StrategyBase(SQLModel):
     file_name: Optional[str] = Field(default=None) # Store original filename if uploaded
     pnl: Optional[float] = Field(default=0.0)
     win_rate: Optional[float] = Field(default=0.0) # Store as decimal (e.g., 65.2 for 65.2%)
+    # Generation scheduling fields
+    generation_schedule: Optional[str] = Field(default=None) # manual, startup, daily, weekly
+    last_generation_time: Optional[str] = Field(default=None) # ISO format datetime string
+    generation_config: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON)) # Store generation parameters
 
 # Database model (table=True indicates this is a table model)
 class Strategy(StrategyBase, table=True):
@@ -30,6 +35,9 @@ class StrategyUpdate(SQLModel):
     file_name: Optional[str] = None
     pnl: Optional[float] = None
     win_rate: Optional[float] = None
+    generation_schedule: Optional[str] = None
+    last_generation_time: Optional[str] = None
+    generation_config: Optional[Dict[str, Any]] = None
 
 # Properties to return via API (includes ID)
 class StrategyRead(StrategyBase):
@@ -45,9 +53,10 @@ class AgentStatusEnum(str, Enum):
 
 class AgentTypeEnum(str, Enum):
     STRATEGY_CODING = 'Strategy Coding Agent'
+    RESEARCH = 'Research & News Agent'
+    PORTFOLIO = 'Portfolio Analyst Agent'
+    RISK = 'Risk Manager Agent'
     EXECUTION = 'Execution Agent'
-    DATA = 'Data Agent'
-    ANALYSIS = 'Analysis Agent'
 
 
 # Base Pydantic model for default agent configuration
@@ -55,6 +64,8 @@ class AgentTypeEnum(str, Enum):
 class BaseAgentConfigModel(SQLModel): # Using SQLModel here for consistency if it were a table, but it's for default_factory
     logLevel: str = Field(default='info')
     enabledTools: List[str] = Field(default_factory=list)
+    llmModelProviderId: str = Field(default='groq')
+    llmModelName: Optional[str] = None
 
 
 class Agent(SQLModel, table=True):

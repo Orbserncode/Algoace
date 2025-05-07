@@ -1,0 +1,88 @@
+Design a modular, multi-agent hedge fund trading platform in Python. Use Pydantic AI to define and orchestrate agents, each specializing in a core hedge fund function (e.g., Research & News, Portfolio Analyst, Risk Manager, Execution). Each agent can be configured to use a different LLM backend (default Groq, with support for local Llama, DeepSeek, etc.), with credentials and endpoints managed via .env files.
+
+Key requirements:
+
+Agent Architecture (Pydantic AI):
+
+Each agent is implemented as a Pydantic AI agent, using typed input/output models for structured, validated communication.
+
+Agents include:
+
+Research & News (market/news analysis, indicator extraction)
+
+Portfolio Analyst (asset allocation, analytics)
+
+Risk Manager (risk metrics, compliance)
+
+Execution (aggregates signals, integrates with Lumibot for trading)
+
+Agents share and select from a large pool of indicators, dynamically deciding which to use based on market context and peer agent analysis.
+
+LLM Provider Management:
+
+Agents can be assigned different LLM backends.
+
+Use .env files for all API keys, endpoints, and authentication.
+
+Default to Groq, but allow easy switching/configuration for others (local Llama, DeepSeek, etc.).
+
+User Configuration (conf file):
+
+Store user and trading settings in a human-readable config file (e.g., config.yaml or config.toml), including:
+
+Default broker (for Lumibot)
+
+Minimum investment amount
+
+Portfolio management rules (e.g., take profit %, stop loss %, allocation targets)
+
+Any additional global or agent-specific preferences
+
+Execution:
+
+Use Lumibot for backtesting and live trading execution.
+
+Execution agent receives signals from other agents and manages trade orders accordingly.
+
+CLI:
+
+Build with Typer for seamless integration with Pydantic models.
+
+CLI should support:
+
+Launching/stopping agents and strategies
+
+Configuring LLM providers and agent settings
+
+Running backtests/live trading
+
+Viewing logs, agent decisions, and system status
+
+Web UI:
+
+Backend: FastAPI (leveraging Pydantic models for type safety)
+
+Frontend: React (preferred) or Vue.js
+
+Features:
+
+Real-time visualization of agent decisions, portfolio analytics, risk metrics, and trades
+
+Interactive editing of config file and agent/LLM settings
+
+Monitoring and alerting for system health and trading events
+
+Best Practices:
+
+Use async execution for agents to enable parallel processing.
+
+Modular codebase: easy to add new agents, LLM providers, or indicators.
+
+Secure handling of sensitive data via .env and config files.
+
+Logging and audit trails for all agent actions and trade executions.
+
+Summary:
+Build a multi-agent hedge fund trading platform using Pydantic AI for agent logic (with typed models), Lumibot for execution, .env for credentials, and a config file for user/trading settings. Provide a Typer-based CLI and a FastAPI/React UI for control, visualization, and configuration. Ensure modularity, extensibility, and robust configuration management.
+
+This prompt will guide Windsurf to generate a project structure and codebase optimized for your requirements, leveraging Pydantic AI’s strengths for agentic applications

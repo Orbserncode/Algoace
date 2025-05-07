@@ -58,7 +58,7 @@ export function StrategyTradesTable({ trades, totalTrades, page, rowsPerPage, on
         <div className="rounded-md border">
             <Table>
                 <TableHeader>
-                <TableRow>
+                  <TableRow>
                     <TableHead className="w-[160px]">Timestamp</TableHead>
                     <TableHead>Symbol</TableHead>
                     <TableHead className="hidden md:table-cell">Type</TableHead>
@@ -68,38 +68,38 @@ export function StrategyTradesTable({ trades, totalTrades, page, rowsPerPage, on
                     <TableHead className="text-right hidden sm:table-cell">Entry Price</TableHead>
                     <TableHead className="text-right hidden sm:table-cell">Exit Price</TableHead>
                     <TableHead className="text-right w-[100px]">P&L ($)</TableHead>
-                </TableRow>
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
-                {trades.length === 0 ? (
+                  {trades.length === 0 ? (
                     <TableRow>
-                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                         No trades found for this period or strategy.
-                    </TableCell>
+                      </TableCell>
                     </TableRow>
-                ) : (
+                  ) : (
                     trades.map((trade) => (
-                    <TableRow key={trade.id}>
+                      <TableRow key={trade.id}>
                         <TableCell className="font-medium tabular-nums">{formatTimestamp(trade.timestamp)}</TableCell>
                         <TableCell>{trade.symbol}</TableCell>
                         <TableCell className="hidden md:table-cell">
-                            <Badge variant={getTradeTypeBadge(trade.tradeType)}>{trade.tradeType}</Badge>
+                          <Badge variant={getTradeTypeBadge(trade.tradeType)}>{trade.tradeType}</Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">{trade.tradingMethod}</TableCell>
                         <TableCell className="hidden lg:table-cell">{trade.assetType}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatNumberValue(trade.lotSize)}</TableCell>
                         <TableCell className="text-right hidden sm:table-cell tabular-nums">
-                            {formatNumberValue(trade.entryPrice, { style: 'currency', currency: 'USD' })}
+                          {formatNumberValue(trade.entryPrice, { style: 'currency', currency: 'USD' })}
                         </TableCell>
-                         <TableCell className="text-right hidden sm:table-cell tabular-nums">
-                            {formatNumberValue(trade.exitPrice, { style: 'currency', currency: 'USD' })}
+                        <TableCell className="text-right hidden sm:table-cell tabular-nums">
+                          {formatNumberValue(trade.exitPrice, { style: 'currency', currency: 'USD' })}
                         </TableCell>
-                         <TableCell className={cn("text-right tabular-nums font-medium", getPnlClass(trade.pnl))}>
-                            {formatNumberValue(trade.pnl, { signDisplay: 'auto' })}
+                        <TableCell className={cn("text-right tabular-nums font-medium", getPnlClass(trade.pnl))}>
+                          {formatNumberValue(trade.pnl, { signDisplay: 'auto' })}
                         </TableCell>
-                    </TableRow>
+                      </TableRow>
                     ))
-                )}
+                  )}
                 </TableBody>
             </Table>
         </div>

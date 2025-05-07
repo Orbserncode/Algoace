@@ -797,3 +797,46 @@ export async function saveStrategyCode(strategyId: string, code: string): Promis
     console.log(`Code for strategy ${strategyId} saved successfully (mock).`);
     return true;
 }
+
+/**
+ * Schedules a strategy generation with the specified frequency.
+ * @param scheduleType The frequency of generation ('startup', 'daily', 'weekly')
+ * @param generationConfig Configuration for the strategy generation
+ * @returns A promise resolving to the scheduled strategy information
+ */
+export async function scheduleStrategyGeneration(scheduleType: string, generationConfig: any): Promise<any> {
+    console.log(`Scheduling strategy generation with ${scheduleType} frequency`);
+    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 200));
+    simulateError(0.05);
+
+    // In a real app, this would call the backend API
+    // For now, simulate a successful response
+    return {
+        message: `Strategy generation scheduled with ${scheduleType} frequency`,
+        strategy_id: `strat-sched-${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 90 + 10)}`
+    };
+}
+
+/**
+ * Triggers execution of all scheduled strategy generations that are due.
+ * @returns A promise resolving to the results of the scheduled generations
+ */
+export async function runScheduledGenerations(): Promise<any> {
+    console.log("Running scheduled strategy generations");
+    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 300));
+    simulateError(0.05);
+
+    // In a real app, this would call the backend API
+    // For now, simulate a successful response
+    return {
+        message: "Processed scheduled generations",
+        results: [
+            {
+                strategy_id: `strat-sched-${String(Date.now()).slice(-4)}${Math.floor(Math.random() * 90 + 10)}`,
+                name: "Scheduled Daily Strategy",
+                schedule: "daily",
+                status: "Generation triggered"
+            }
+        ]
+    };
+}

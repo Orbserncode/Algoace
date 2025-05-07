@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from .database import create_db_and_tables, engine # Import engine for potential disconnect
-from .api import strategies # Import the strategies router
-from .api import agents as agents_router # Import the new agents router
+from backend.database import create_db_and_tables, engine # Import engine for potential disconnect
+from backend.api import strategies # Import the strategies router
+from backend.api import agents as agents_router # Import the new agents router
 
 # Define lifespan context manager for startup/shutdown events
 @asynccontextmanager

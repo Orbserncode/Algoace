@@ -1,0 +1,163 @@
+# AlgoAce Trader Configuration
+
+# Global Settings
+global:
+  default_broker: "alpaca"  # Options: alpaca, interactive_brokers, paper
+  log_level: "info"  # Options: debug, info, warn, error
+  default_llm_provider: "groq"  # Options: openai, groq, local
+  default_llm_model: "llama3-70b-8192"  # Provider-specific model name
+
+# Broker Configurations
+brokers:
+  alpaca:
+    api_key: "${ALPACA_API_KEY}"  # Environment variable reference
+    api_secret: "${ALPACA_API_SECRET}"
+    paper: true  # Use paper trading
+    base_url: "https://paper-api.alpaca.markets"
+  
+  interactive_brokers:
+    port: 7496
+    client_id: 1
+    read_only: false
+    account_id: "${IB_ACCOUNT_ID}"
+  
+  paper:
+    initial_balance: 100000.00
+    data_source: "yahoo"  # Options: yahoo, alpha_vantage, polygon
+
+# Portfolio Settings
+portfolio:
+  minimum_investment: 10000.00
+  max_position_size: 0.20  # Maximum 20% in any single position
+  target_allocation:
+    us_equities: 0.60
+    international_equities: 0.20
+    bonds: 0.15
+    cash: 0.05
+  rebalance_threshold: 0.05  # Trigger rebalance when allocation deviates by 5%
+  take_profit: 0.20  # Take profit at 20% gain
+  stop_loss: 0.10  # Stop loss at 10% loss
+
+# Risk Management
+risk:
+  max_drawdown: 0.15  # Maximum allowed drawdown
+  var_limit: 0.03  # Value at Risk limit (95% confidence)
+  max_sector_exposure: 0.40  # Maximum exposure to any sector
+  max_leverage: 1.0  # Maximum leverage (1.0 = no leverage)
+  compliance_rules:
+    - "No single asset should exceed 20% of portfolio value"
+    - "No single sector should exceed 40% of portfolio value"
+    - "Portfolio leverage should not exceed 1.0x"
+    - "At least 80% of assets should be liquidatable within 1 trading day"
+
+# Agent Configurations
+agents:
+  research:
+    enabled: true
+    llm_provider: "groq"
+    llm_model: "llama3-70b-8192"
+    fetch_frequency_minutes: 15
+    watched_assets:
+      - symbol: "AAPL"
+        broker_id: "alpaca"
+      - symbol: "MSFT"
+        broker_id: "alpaca"
+      - symbol: "AMZN"
+        broker_id: "alpaca"
+      - symbol: "GOOGL"
+        broker_id: "alpaca"
+      - symbol: "SPY"
+        broker_id: "alpaca"
+    use_serp_api_for_news: true
+    enabled_tools:
+      - "MarketDataFetcher"
+      - "WebSearcher"
+      - "TechnicalIndicatorCalculator"
+      - "NewsAnalyzer"
+  
+  portfolio:
+    enabled: true
+    llm_provider: "groq"
+    llm_model: "llama3-70b-8192"
+    analysis_frequency_hours: 4
+    target_allocation:
+      AAPL: 0.12
+      MSFT: 0.12
+      AMZN: 0.10
+      GOOGL: 0.10
+      BRK.B: 0.08
+      SPY: 0.25
+      QQQ: 0.15
+      BONDS: 0.08
+    rebalance_threshold_percent: 5.0
+    enabled_tools:
+      - "PortfolioManager"
+      - "MarketDataFetcher"
+      - "TechnicalIndicatorCalculator"
+  
+  risk:
+    enabled: true
+    llm_provider: "groq"
+    llm_model: "llama3-70b-8192"
+    analysis_frequency_hours: 2
+    risk_limits:
+      var_95: 0.03
+      var_99: 0.05
+      max_drawdown: 0.15
+      volatility: 0.15
+      beta: 1.2
+      concentration: 0.20
+      sector_concentration: 0.40
+    compliance_rules:
+      - "No single asset should exceed 20% of portfolio value"
+      - "No single sector should exceed 40% of portfolio value"
+      - "Portfolio leverage should not exceed 1.0x"
+      - "At least 80% of assets should be liquidatable within 1 trading day"
+      - "Options exposure should not exceed 10% of portfolio value"
+    enabled_tools:
+      - "PortfolioManager"
+      - "MarketDataFetcher"
+      - "RiskCalculator"
+  
+  execution:
+    enabled: true
+    llm_provider: "groq"
+    llm_model: "llama3-70b-8192"
+    broker_config_id: "alpaca"
+    max_concurrent_trades: 5
+    order_retry_attempts: 3
+    requires_all_agent_confirmation: true
+    enabled_tools:
+      - "OrderExecutor"
+      - "PortfolioManager"
+      - "MarketDataFetcher"
+  
+  strategy_coding:
+    enabled: true
+    llm_provider: "openai"
+    llm_model: "gpt-4o"
+    backtest_engine: "lumibot"
+    coding_retry_attempts: 2
+    enabled_tools:
+      - "MarketDataFetcher"
+      - "TechnicalIndicatorCalculator"
+      - "Backtester"
+
+# Backtesting Settings
+backtesting:
+  default_engine: "lumibot"
+  default_timeframe: "1d"
+  default_period: "1y"
+  data_source: "yahoo"
+  benchmark: "SPY"
+  commission: 0.0
+  slippage: 0.001
+  initial_capital: 100000.00
+
+# API Keys (can be overridden by environment variables)
+api_keys:
+  openai: "${OPENAI_API_KEY}"
+  groq: "${GROQ_API_KEY}"
+  serp: "${SERP_API_KEY}"
+  news: "${NEWS_API_KEY}"
+  market_data: "${MARKET_DATA_API_KEY}"
