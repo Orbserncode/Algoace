@@ -16,14 +16,13 @@ class ToolDefinition(BaseModel):
     name: ToolNameEnum
     description: str
 
-# This list should be kept in sync with frontend's availableTools
 available_tools: List[ToolDefinition] = [
-    ToolDefinition(name='MarketDataFetcher', description='Fetches historical and real-time market data for specified assets.'),
-    ToolDefinition(name='TechnicalIndicatorCalculator', description='Calculates various technical indicators (e.g., RSI, MACD, SMA).'),
-    ToolDefinition(name='WebSearcher', description='Performs web searches for news, analysis, or other relevant information (uses SerpAPI if configured).'),
-    ToolDefinition(name='PortfolioManager', description='Accesses current portfolio state, positions, and P&L.'),
-    ToolDefinition(name='OrderExecutor', description='Places, modifies, or cancels trades via a configured broker.'),
-    ToolDefinition(name='Backtester', description='Runs backtests on strategy code with specified parameters.'),
+    ToolDefinition(name=ToolNameEnum.MarketDataFetcher, description='Fetches historical and real-time market data for specified assets.'),
+    ToolDefinition(name=ToolNameEnum.TechnicalIndicatorCalculator, description='Calculates various technical indicators (e.g., RSI, MACD, SMA).'),
+    ToolDefinition(name=ToolNameEnum.WebSearcher, description='Performs web searches for news, analysis, or other relevant information (uses SerpAPI if configured).'),
+    ToolDefinition(name=ToolNameEnum.PortfolioManager, description='Accesses current portfolio state, positions, and P&L.'),
+    ToolDefinition(name=ToolNameEnum.OrderExecutor, description='Places, modifies, or cancels trades via a configured broker.'),
+    ToolDefinition(name=ToolNameEnum.Backtester, description='Runs backtests on strategy code with specified parameters.'),
 ]
 
 # --- Agent Configuration Schemas (Pydantic) ---
@@ -34,9 +33,36 @@ class LogLevelEnum(str, Enum):
     warn = 'warn'
     error = 'error'
 
+# Enum for agent types, mirrors models.AgentTypeEnum string values for discriminator
+class AgentTypeEnumSchema(str, Enum):
+    STRATEGY_CODING = 'Strategy Coding Agent'
+    EXECUTION = 'Execution Agent'
+    DATA = 'Data Agent'
+    ANALYSIS = 'Analysis Agent'
+    # Add a BASE type for the BaseAgentConfig if it can exist on its own
+    BASE = 'Base Agent' 
+
 class BaseAgentConfig(BaseModel):
+    # Add agent_type discriminator to make parsing with discriminated unions more straightforward if needed,
+    # though parse_agent_config currently handles it based on the agent's main type.
+    # This field might be redundant if parse_agent_config is always used.
+    agent_type: Literal[AgentTypeEnumSchema.BASE] = Field(AgentTypeEnumSchema.BASE, frozen=True, exclude=True) # Exclude from model_dump unless explicitly included
     logLevel: LogLevelEnum = Field(default='info', description="Logging verbosity for the agent.")
-    enabledTools: Optional[List[ToolNameEnum]] = Field(default_factory=list, description="List of tools this agent is permitted to use.")
+    enabledTools: List[ToolNameEnum] = Field(default_factory=list, description="List of tools this agent is permitted to use.")
+
+    @field_validator('enabledTools', mode='before')
+    @classmethod
+    def validate_tool_names(cls, v):
+        if not isinstance(v, list):
+            raise ValueError('enabledTools must be a list')
+        valid_tools = []
+        for tool_name_str in v:
+            try:
+                valid_tools.append(ToolNameEnum(tool_name_str))
+            except ValueError:
+                raise ValueError(f"Invalid tool name: {tool_name_str}. Allowed tools are: {[e.value for e in ToolNameEnum]}")
+        return valid_tools
+
 
 class BacktestEngineEnum(str, Enum):
     lumibot = 'lumibot'
@@ -44,20 +70,20 @@ class BacktestEngineEnum(str, Enum):
     internal_mock = 'internal_mock'
 
 class StrategyCodingAgentConfig(BaseAgentConfig):
-    agent_type: Literal['Strategy Coding Agent'] = Field('Strategy Coding Agent', frozen=True)
+    agent_type: Literal[AgentTypeEnumSchema.STRATEGY_CODING] = Field(AgentTypeEnumSchema.STRATEGY_CODING, frozen=True)
     llmModelProviderId: Optional[str] = Field(default=None, description="ID of the configured LLM provider to use.")
     llmModelName: Optional[str] = Field(default=None, description="Specific model name from the selected provider (e.g., gemini-2.0-flash, gpt-4-turbo).")
     backtestEngine: BacktestEngineEnum = Field(default='lumibot', description="Engine to use for backtesting generated strategies.")
     generationPrompt: str = Field(
-        default="You are an expert quantitative trading strategy developer specializing in Python and the Lumibot framework.\nGenerate a new trading strategy based on the provided market conditions, risk tolerance, and historical data context.\nThe strategy should be encapsulated in a Python class inheriting from lumibot.strategies.Strategy.\nInclude clear comments explaining the logic, parameters, entry/exit conditions, and risk management.\nOptimize for the specified risk tolerance: {riskTolerance}.\nCurrent Market Conditions: {marketConditions}.\nHistorical Context: {historicalData}",
+        default="You are an expert quantitative trading strategy developer specializing in Python and the Lumibot framework.\nGenerate a new trading strategy based on the provided market conditions, risk tolerance, and historical data context.\nThe strategy should be encapsulated in a Python class inheriting from lumibot.strategies.Strategy.\nInclude clear comments explaining the logic, parameters, entry/exit conditions, and risk management.\nOptimize for the specified risk tolerance: {riskTolerance}.\nCurrent Market Conditions: {marketConditions}.\nHistorical Context: {historicalData}.\nTarget Asset Class: {targetAssetClass}.\nCustom Requirements: {customRequirements}",
         min_length=50,
-        description="System prompt for the strategy generation LLM. Use placeholders like {riskTolerance}, {marketConditions}, {historicalData}."
+        description="System prompt for the strategy generation LLM. Use placeholders like {riskTolerance}, {marketConditions}, {historicalData}, {targetAssetClass}, {customRequirements}."
     )
     codingRetryAttempts: int = Field(default=2, ge=0, le=5, description="Number of attempts to generate and debug code if errors occur.")
 
 class ExecutionAgentConfig(BaseAgentConfig):
-    agent_type: Literal['Execution Agent'] = Field('Execution Agent', frozen=True)
-    brokerConfigId: str = Field(description="ID of the configured broker to use for execution.")
+    agent_type: Literal[AgentTypeEnumSchema.EXECUTION] = Field(AgentTypeEnumSchema.EXECUTION, frozen=True)
+    brokerConfigId: Optional[str] = Field(default=None, description="ID of the configured broker to use for execution. Required if agent is active.") # Made optional, but active agents should have this.
     llmModelProviderId: Optional[str] = Field(default=None, description="ID of the LLM provider for dynamic execution adjustments (optional).")
     llmModelName: Optional[str] = Field(default=None, description="Specific model name for execution adjustments (optional).")
     maxConcurrentTrades: int = Field(default=5, ge=1, le=20, description="Maximum number of trades the agent can manage simultaneously.")
@@ -73,14 +99,14 @@ class WatchedAsset(BaseModel):
     symbol: str = Field(description="Asset symbol (e.g., AAPL, BTC/USD).")
 
 class DataAgentConfig(BaseAgentConfig):
-    agent_type: Literal['Data Agent'] = Field('Data Agent', frozen=True)
+    agent_type: Literal[AgentTypeEnumSchema.DATA] = Field(AgentTypeEnumSchema.DATA, frozen=True)
     dataProviderConfigId: Optional[str] = Field(default=None, description="ID of a specific data provider configuration (e.g., a specific broker or direct API).")
     fetchFrequencyMinutes: int = Field(default=15, ge=1, le=1440, description="How often to fetch new market data, in minutes.")
-    watchedAssets: List[WatchedAsset] = Field(default_factory=list, min_length=1, description="List of assets to monitor, potentially from multiple brokers.")
+    watchedAssets: List[WatchedAsset] = Field(default_factory=list, description="List of assets to monitor, potentially from multiple brokers. Min 1 if agent active.")
     useSerpApiForNews: bool = Field(default=False, description="Enable fetching news and sentiment via SerpAPI for watched assets.")
 
 class AnalysisAgentConfig(BaseAgentConfig):
-    agent_type: Literal['Analysis Agent'] = Field('Analysis Agent', frozen=True)
+    agent_type: Literal[AgentTypeEnumSchema.ANALYSIS] = Field(AgentTypeEnumSchema.ANALYSIS, frozen=True)
     llmModelProviderId: Optional[str] = Field(default=None, description="ID of the configured LLM provider to use.")
     llmModelName: Optional[str] = Field(default=None, description="Specific model name from the selected provider.")
     analysisPrompt: str = Field(
@@ -89,16 +115,12 @@ class AnalysisAgentConfig(BaseAgentConfig):
     )
     analysisFrequencyHours: int = Field(default=4, ge=1, le=24, description="How often to perform and report analysis, in hours.")
 
+# Union for config types. BaseAgentConfig is included for default/unknown cases.
 AgentConfigUnion = Union[StrategyCodingAgentConfig, ExecutionAgentConfig, DataAgentConfig, AnalysisAgentConfig, BaseAgentConfig]
 
 
 # --- Agent CRUD Schemas ---
-# Enum for agent types, mirrors models.AgentTypeEnum string values
-class AgentTypeEnumSchema(str, Enum):
-    STRATEGY_CODING = 'Strategy Coding Agent'
-    EXECUTION = 'Execution Agent'
-    DATA = 'Data Agent'
-    ANALYSIS = 'Analysis Agent'
+# AgentTypeEnumSchema already defined above
 
 # Enum for agent statuses, mirrors models.AgentStatusEnum string values
 class AgentStatusEnumSchema(str, Enum):
@@ -110,31 +132,38 @@ class AgentStatusEnumSchema(str, Enum):
 
 class AgentBase(BaseModel):
     name: str = Field(min_length=3, max_length=50)
-    type: AgentTypeEnumSchema # Use the schema enum here
+    type: AgentTypeEnumSchema 
     description: str = Field(min_length=10, max_length=255)
     associatedStrategyIds: Optional[List[str]] = Field(default_factory=list)
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    # config when creating/updating is a dictionary, which will be parsed.
+    config: Optional[Dict[str, Any]] = Field(default_factory=dict) 
 
 class AgentCreate(AgentBase):
+    # isDefault is handled by the model's default if not provided
+    isDefault: Optional[bool] = Field(default=False)
     pass
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=3, max_length=50)
     description: Optional[str] = Field(default=None, min_length=10, max_length=255)
-    status: Optional[AgentStatusEnumSchema] = None # Use schema enum
-    config: Optional[Dict[str, Any]] = None
+    status: Optional[AgentStatusEnumSchema] = None
+    config: Optional[Dict[str, Any]] = None # Input config is Dict
     associatedStrategyIds: Optional[List[str]] = None
+    # isDefault typically shouldn't be updated after creation, but can be allowed
+    isDefault: Optional[bool] = None
 
-class AgentRead(AgentBase):
-    id: int # Changed from str to int to match SQLModel ID type
-    status: AgentStatusEnumSchema # Use schema enum
+
+class AgentRead(AgentBase): # Inherits name, type, description, associatedStrategyIds
+    id: int
+    status: AgentStatusEnumSchema
     tasksCompleted: int
     errors: int
     isDefault: bool
-    config: Optional[AgentConfigUnion] 
+    # config in AgentRead is the parsed Pydantic model union
+    config: AgentConfigUnion 
 
     class Config:
-        from_attributes = True # Replaces orm_mode for Pydantic v2
+        from_attributes = True
 
 
 class AgentStatusUpdate(BaseModel):
@@ -145,12 +174,11 @@ class AgentStatusUpdate(BaseModel):
 def parse_agent_config(agent_type_str: str, config_data: Optional[Dict[str, Any]]) -> AgentConfigUnion:
     config_data = config_data or {} # Ensure config_data is a dict
 
-    # Ensure 'agent_type' field is present in config_data if it's part of the specific config schema
-    # This is important because the discriminated union relies on this field.
-    # However, our base models don't all have it. We'll map based on agent_type_str.
+    # Add 'agent_type' to config_data if not already present, for discriminated union parsing
+    # This helps if we were to use AgentConfigUnion.model_validate(config_data_with_type) directly.
+    # However, the current explicit if/else based on agent_type_str is also clear.
 
     if agent_type_str == AgentTypeEnumSchema.STRATEGY_CODING.value:
-        # Add agent_type to the data if not present, for validation
         return StrategyCodingAgentConfig(**{'agent_type': AgentTypeEnumSchema.STRATEGY_CODING.value, **config_data})
     elif agent_type_str == AgentTypeEnumSchema.EXECUTION.value:
         return ExecutionAgentConfig(**{'agent_type': AgentTypeEnumSchema.EXECUTION.value, **config_data})
@@ -159,7 +187,7 @@ def parse_agent_config(agent_type_str: str, config_data: Optional[Dict[str, Any]
     elif agent_type_str == AgentTypeEnumSchema.ANALYSIS.value:
         return AnalysisAgentConfig(**{'agent_type': AgentTypeEnumSchema.ANALYSIS.value, **config_data})
     else:
-        # This case should ideally not be reached if agent_type_str is always valid
-        # Fallback to BaseAgentConfig if type is unknown or for generic agents
-        return BaseAgentConfig(**config_data)
-
+        # Fallback to BaseAgentConfig for unknown or generic types
+        # Or raise an error if the type is strictly one of the above.
+        # For flexibility, let's assume a base config can exist.
+        return BaseAgentConfig(**{'agent_type': AgentTypeEnumSchema.BASE.value, **config_data})

@@ -7,3 +7,5 @@ python-dotenv>=1.0.1
 sqlmodel>=0.0.18
 alembic>=1.13.1
 pydantic-ai>=0.3.0
+openai>=1.0.0 # For OpenAI models via pydantic-ai
+google-generativeai>=0.7.0 # For Gemini models via pydantic-ai
