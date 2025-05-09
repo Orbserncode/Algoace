@@ -19,9 +19,9 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getAgents, activateAgent, deactivateAgent, deleteAgent, Agent } from '@/services/agents-service'; // Import updated services
-import { AgentConfigurationDialog } from './_components/agent-configuration-dialog'; // Import the new dialog component
-import type { AgentConfig } from '@/services/agents-service'; // Import config types
+import { getAgents, activateAgent, deactivateAgent, deleteAgent, Agent } from '@/services/agents-service.new'; // Import Pydantic-AI services
+import { AgentConfigurationDialog } from './_components/agent-configuration-dialog.new'; // Import the new Pydantic-AI dialog component
+import type { AgentConfig } from '@/services/agents-service.new'; // Import Pydantic-AI config types
 
 export default function AgentsPage() {
     const { toast } = useToast();
@@ -29,6 +29,11 @@ export default function AgentsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null); // Track loading state for specific actions (e.g., "toggle:agent-id")
+    
+    // Helper function to check if an action is loading
+    const isActionInProgress = (actionId?: string): boolean => {
+        return actionLoading !== null && (actionId ? actionLoading === actionId : true);
+    };
     const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
     const [selectedAgentForConfig, setSelectedAgentForConfig] = useState<Agent | null>(null);
 
@@ -83,12 +88,13 @@ export default function AgentsPage() {
     const handleToggleAgentStatus = async (agent: Agent) => {
         const actionId = `toggle:${agent.id}`;
         setActionLoading(actionId);
-        const isActivating = agent.status === 'Stopped' || agent.status === 'Idle';
+        const isActivating = agent.status === 'Idle';
         const actionVerb = isActivating ? 'Activating' : 'Deactivating';
-        const actionService = isActivating ? activateAgent : deactivateAgent;
 
         try {
-            const updatedAgent = await actionService(agent.id);
+            const updatedAgent = isActivating
+                ? await activateAgent(agent.id)
+                : await deactivateAgent(agent.id);
             if (updatedAgent) {
                 setAgents(prev => prev.map(a => a.id === updatedAgent.id ? updatedAgent : a));
                 toast({ title: `Agent ${isActivating ? 'Activated' : 'Deactivated'}`, description: `${updatedAgent.name} is now ${updatedAgent.status}.` });
@@ -126,14 +132,12 @@ export default function AgentsPage() {
 
     const getStatusBadgeVariant = (status: Agent['status']) => {
         switch (status) {
-        case 'Running':
+        case 'Active':
             return 'default'; // Primary color
         case 'Idle':
             return 'secondary';
         case 'Error':
             return 'destructive';
-        case 'Stopped':
-            return 'outline';
         default:
             return 'outline';
         }
@@ -176,13 +180,13 @@ export default function AgentsPage() {
         return (
              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                  {agents.map((agent) => {
-                     const isActionLoading = actionLoading && actionLoading.endsWith(agent.id);
-                     const isToggling = actionLoading?.startsWith('toggle:');
-                     const isDeleting = actionLoading?.startsWith('delete:');
-                     const isConfiguring = actionLoading?.startsWith('config:');
+                     const isActionForThisAgent = actionLoading && actionLoading.endsWith(agent.id);
+                     const isToggling = actionLoading === `toggle:${agent.id}`;
+                     const isDeleting = actionLoading === `delete:${agent.id}`;
+                     const isConfiguring = actionLoading === `config:${agent.id}`;
 
                      return (
-                         <Card key={agent.id} className={cn(isActionLoading && "opacity-70 pointer-events-none")}>
+                         <Card key={agent.id} className={cn(isActionForThisAgent && "opacity-70 pointer-events-none")}>
                              <CardHeader>
                                  <div className="flex items-center justify-between">
                                      <CardTitle className="text-lg flex items-center gap-2">
@@ -215,30 +219,36 @@ export default function AgentsPage() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleToggleAgentStatus(agent)}
-                                        disabled={isActionLoading}
-                                        title={agent.status === 'Stopped' || agent.status === 'Idle' ? 'Activate Agent' : 'Deactivate Agent'}
+                                        disabled={!!isActionForThisAgent}
+                                        title={agent.status === 'Idle' ? 'Activate Agent' : 'Deactivate Agent'}
                                      >
-                                        {isActionLoading && isToggling ? (
+                                        {isToggling ? (
                                             <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                                         ) : agent.status === 'Stopped' || agent.status === 'Idle' ? (
+                                         ) : agent.status === 'Idle' ? (
                                             <Power className="mr-1 h-3 w-3 text-green-500" />
                                         ) : (
                                             <PowerOff className="mr-1 h-3 w-3 text-red-500" />
                                         )}
-                                         {agent.status === 'Stopped' || agent.status === 'Idle' ? 'Activate' : 'Deactivate'}
+                                         {agent.status === 'Idle' ? 'Activate' : 'Deactivate'}
                                     </Button>
-                                     <Button variant="outline" size="sm" onClick={() => handleConfigureAgent(agent)} disabled={isActionLoading}>
+                                     <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleConfigureAgent(agent)}
+                                        disabled={!!isActionForThisAgent || agent.status === 'Active'}
+                                        title={agent.status === 'Active' ? 'Deactivate agent first to configure' : 'Configure agent settings'}
+                                     >
                                          <Settings className="mr-1 h-3 w-3" /> Configure
                                      </Button>
-                                     <Button variant="outline" size="sm" onClick={() => handleViewLogs(agent.id)} disabled={isActionLoading}>
+                                     <Button variant="outline" size="sm" onClick={() => handleViewLogs(agent.id)} disabled={!!isActionForThisAgent}>
                                          <Activity className="mr-1 h-3 w-3" /> Logs
                                      </Button>
                                      {/* Delete Button (only for non-default) */}
                                      {!agent.isDefault && (
                                          <AlertDialog>
                                             <AlertDialogTrigger asChild>
-                                                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={isActionLoading}>
-                                                     {isActionLoading && isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={!!isActionForThisAgent}>
+                                                     {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                                  </Button>
                                             </AlertDialogTrigger>
                                              <AlertDialogContent>

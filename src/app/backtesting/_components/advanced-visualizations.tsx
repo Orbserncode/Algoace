@@ -281,7 +281,7 @@ export function AdvancedVisualizations({ trades, isLoading, equityCurve = [] }: 
                     tickFormatter={(value) => {
                       try {
                         return new Date(value).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-                      } catch {
+                      } catch (error) {
                         return value;
                       }
                     }}

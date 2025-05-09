@@ -1,0 +1,7 @@
+{
+  "/backtesting/page": "app/backtesting/page.js",
+  "/datasets/page": "app/datasets/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js",
+  "/strategies/page": "app/strategies/page.js"
+}

@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset Viewer Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f9fafb;
+            color: #111827;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-weight: 500;
+        }
+        .badge-forex { background-color: #dbeafe; color: #1e40af; }
+        .badge-crypto { background-color: #ede9fe; color: #5b21b6; }
+        .badge-stocks { background-color: #dcfce7; color: #166534; }
+        .badge-futures { background-color: #fef3c7; color: #92400e; }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-content {
+            background-color: white;
+            border-radius: 0.5rem;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold">Datasets & Recommendations</h1>
+            <div class="flex space-x-2">
+                <button id="toggle-view" class="px-3 py-2 border rounded-md flex items-center gap-1">
+                    <svg id="grid-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <svg id="list-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                    <span id="view-text">Switch to Table View</span>
+                </button>
+                <button class="px-3 py-2 bg-blue-500 text-white rounded-md">Add Dataset</button>
+            </div>
+        </div>
+
+        <div class="flex items-center mb-6">
+            <div class="relative flex-grow max-w-md">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="search" id="search-input" placeholder="Search datasets..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md">
+            </div>
+            <div class="ml-4 flex space-x-2" id="category-filters">
+                <button class="px-3 py-1 border rounded-md active" data-category="all">All</button>
+                <button class="px-3 py-1 border rounded-md" data-category="forex">Forex</button>
+                <button class="px-3 py-1 border rounded-md" data-category="crypto">Crypto</button>
+                <button class="px-3 py-1 border rounded-md" data-category="stocks">Stocks</button>
+                <button class="px-3 py-1 border rounded-md" data-category="futures">Futures</button>
+            </div>
+        </div>
+
+        <!-- Grid View -->
+        <div id="grid-view" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+        <!-- Table View -->
+        <div id="table-view" class="overflow-x-auto hidden">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="text-left p-3 border-b">Name</th>
+                        <th class="text-left p-3 border-b">Description</th>
+                        <th class="text-left p-3 border-b">Category</th>
+                        <th class="text-left p-3 border-b">Format</th>
+                        <th class="text-left p-3 border-b">Size</th>
+                        <th class="text-left p-3 border-b">Last Updated</th>
+                        <th class="text-right p-3 border-b">Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Dataset Details Modal -->
+        <div id="dataset-modal" class="modal">
+            <div class="modal-content p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h2 id="modal-title" class="text-xl font-bold"></h2>
+                        <p id="modal-description" class="text-gray-500 mt-1"></p>
+                    </div>
+                    <button id="close-modal" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="border-b mb-4">
+                    <div class="flex space-x-4">
+                        <button class="tab-btn active py-2 px-4 border-b-2 border-blue-500 font-medium" data-tab="details">Details</button>
+                        <button class="tab-btn py-2 px-4 border-b-2 border-transparent font-medium" data-tab="metadata">Metadata</button>
+                        <button class="tab-btn py-2 px-4 border-b-2 border-transparent font-medium" data-tab="preview">Preview</button>
+                    </div>
+                </div>
+
+                <div id="details-tab" class="tab-content">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p class="text-sm font-medium">Source</p>
+                            <p id="modal-source" class="text-sm text-gray-500"></p>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium">Format</p>
+                            <p id="modal-format" class="text-sm text-gray-500"></p>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium">Size</p>
+                            <p id="modal-size" class="text-sm text-gray-500"></p>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium">Last Updated</p>
+                            <p id="modal-date" class="text-sm text-gray-500"></p>
+                        </div>
+                    </div>
+                    <div id="modal-tags" class="flex flex-wrap gap-1 mt-1"></div>
+                </div>
+
+                <div id="metadata-tab" class="tab-content hidden">
+                    <pre id="modal-metadata" class="bg-gray-100 p-4 rounded-md overflow-auto max-h-[400px] text-xs"></pre>
+                </div>
+
+                <div id="preview-tab" class="tab-content hidden">
+                    <div class="overflow-auto max-h-[400px]">
+                        <table id="preview-table" class="w-full border-collapse">
+                            <thead>
+                                <tr id="preview-headers"></tr>
+                            </thead>
+                            <tbody id="preview-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button class="px-3 py-2 border rounded-md">Open in Explorer</button>
+                    <button class="px-3 py-2 bg-blue-500 text-white rounded-md">Download</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample dataset data
+        const datasets = [
+            {
+                id: 'ds-001',
+                name: 'EUR/USD Historical',
+                description: 'Historical price data for EUR/USD pair',
+                category: 'forex',
+                subcategory: 'major_pairs',
+                source: 'OANDA',
+                format: 'csv',
+                size: 1024,
+                lastUpdated: '2025-05-01T00:00:00Z',
+                path: '/data/forex/eurusd_1h_2020_2025.csv',
+                metadata: {
+                    timeframe: '1h',
+                    startDate: '2020-01-01',
+                    endDate: '2025-05-01',
+                    columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                },
+                tags: ['forex', 'eurusd', 'hourly']
+            },
+            {
+                id: 'ds-002',
+                name: 'BTC/USD Historical',
+                description: 'Historical price data for Bitcoin',
+                category: 'crypto',
+                subcategory: 'bitcoin',
+                source: 'Binance',
+                format: 'json',
+                size: 2048,
+                lastUpdated: '2025-05-01T00:00:00Z',
+                path: '/data/crypto/btcusd_15m_2022_2025.json',
+                metadata: {
+                    timeframe: '15m',
+                    startDate: '2022-01-01',
+                    endDate: '2025-05-01',
+                    columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                },
+                tags: ['crypto', 'bitcoin', '15min']
+            },
+            {
+                id: 'ds-003',
+                name: 'Tech Stocks Bundle',
+                description: 'Historical data for major tech stocks',
+                category: 'stocks',
+                subcategory: 'tech',
+                source: 'Alpha Vantage',
+                format: 'csv',
+                size: 4096,
+                lastUpdated: '2025-04-15T00:00:00Z',
+                path: '/data/stocks/tech_stocks_daily_2023_2025.csv',
+                metadata: {
+                    timeframe: '1d',
+                    startDate: '2023-01-01',
+                    endDate: '2025-04-15',
+                    symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'],
+                    columns: ['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']
+                },
+                tags: ['stocks', 'tech', 'daily']
+            },
+            {
+                id: 'ds-004',
+                name: 'S&P 500 Futures',
+                description: 'S&P 500 futures contracts historical data',
+                category: 'futures',
+                subcategory: 'indices',
+                source: 'CME Group',
+                format: 'csv',
+                size: 1536,
+                lastUpdated: '2025-05-02T00:00:00Z',
+                path: '/data/futures/sp500_futures_1d_2020_2025.csv',
+                metadata: {
+                    timeframe: '1d',
+                    startDate: '2020-01-01',
+                    endDate: '2025-05-01',
+                    columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'open_interest']
+                },
+                tags: ['futures', 'sp500', 'indices', 'daily']
+            }
+        ];
+
+        // Helper functions
+        function formatFileSize(sizeInKB) {
+            if (sizeInKB < 1024) return `${sizeInKB} KB`;
+            else if (sizeInKB < 1024 * 1024) return `${(sizeInKB / 1024).toFixed(2)} MB`;
+            else return `${(sizeInKB / (1024 * 1024)).toFixed(2)} GB`;
+        }
+
+        function formatDate(dateString) {
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            } catch (e) {
+                return dateString;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            let currentView = 'grid';
+            let filteredDatasets = [...datasets];
+            
+            // Initial render
+            renderGridView(filteredDatasets);
+            renderTableView(filteredDatasets);
+            
+            // Toggle view
+            document.getElementById('toggle-view').addEventListener('click', function() {
+                if (currentView === 'grid') {
+                    document.getElementById('grid-view').classList.add('hidden');
+                    document.getElementById('table-view').classList.remove('hidden');
+                    document.getElementById('grid-icon').classList.add('hidden');
+                    document.getElementById('list-icon').classList.remove('hidden');
+                    document.getElementById('view-text').textContent = 'Switch to Grid View';
+                    currentView = 'table';
+                } else {
+                    document.getElementById('grid-view').classList.remove('hidden');
+                    document.getElementById('table-view').classList.add('hidden');
+                    document.getElementById('grid-icon').classList.remove('hidden');
+                    document.getElementById('list-icon').classList.add('hidden');
+                    document.getElementById('view-text').textContent = 'Switch to Table View';
+                    currentView = 'grid';
+                }
+            });
+            
+            // Search functionality
+            document.getElementById('search-input').addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                filteredDatasets = datasets.filter(dataset => 
+                    dataset.name.toLowerCase().includes(searchTerm) || 
+                    dataset.description.toLowerCase().includes(searchTerm) ||
+                    dataset.tags.some(tag => tag.toLowerCase().includes(searchTerm))
+                );
+                renderGridView(filteredDatasets);
+                renderTableView(filteredDatasets);
+            });
+            
+            // Category filter
+            document.querySelectorAll('#category-filters button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const category = this.dataset.category;
+                    
+                    // Update active state
+                    document.querySelectorAll('#category-filters button').forEach(btn => {
+                        btn.classList.remove('active', 'bg-gray-100');
+                    });
+                    this.classList.add('active', 'bg-gray-100');
+                    
+                    // Filter datasets
+                    if (category === 'all') {
+                        filteredDatasets = [...datasets];
+                    } else {
+                        filteredDatasets = datasets.filter(dataset => dataset.category === category);
+                    }
+                    
+                    renderGridView(filteredDatasets);
+                    renderTableView(filteredDatasets);
+                });
+            });
+            
+            // Close modal
+            document.getElementById('close-modal').addEventListener('click', function() {
+                document.getElementById('dataset-modal').style.display = 'none';
+            });
+            
+            // Tab switching
+            document.querySelectorAll('.tab-btn').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.dataset.tab;
+                    
+                    // Update active tab
+                    document.querySelectorAll('.tab-btn').forEach(t => {
+                        t.classList.remove('active', 'border-blue-500');
+                        t.classList.add('border-transparent');
+                    });
+                    this.classList.add('active', 'border-blue-500');
+                    this.classList.remove('border-transparent');
+                    
+                    // Show selected tab content
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+                });
+            });
+            
+            // Click outside modal to close
+            window.addEventListener('click', function(e) {
+                const modal = document.getElementById('dataset-modal');
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+
+        // Render grid view
+        function renderGridView(filteredDatasets) {
+            const gridView = document.getElementById('grid-view');
+            gridView.innerHTML = '';
+
+            filteredDatasets.forEach(dataset => {
+                const card = document.createElement('div');
+                card.className = 'card border p-4';
+                card.dataset.id = dataset.id;
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="badge badge-${dataset.category}">${dataset.category}</span>
+                    </div>
+                    <h3 class="font-medium mb-2">${dataset.name}</h3>
+                    <p class="text-sm text-gray-500 mb-4">${dataset.description}</p>
+                    <div class="flex justify-between text-sm text-gray-500">
+                        <span>${dataset.format.toUpperCase()}</span>
+                        <span>${formatFileSize(dataset.size)}</span>
+                    </div>
+                `;
+                
+                card.addEventListener('click', () => showDatasetDetails(dataset.id));
+                gridView.appendChild(card);
+            });
+        }
+
+        // Render table view
+        function renderTableView(filteredDatasets) {
+            const tableBody = document.querySelector('#table-view tbody');
+            tableBody.innerHTML = '';
+
+            filteredDatasets.forEach(dataset => {
+                const row = document.createElement('tr');
+                row.className = 'cursor-pointer hover:bg-gray-50';
+                row.dataset.id = dataset.id;
+                
+                row.innerHTML = `
+                    <td class="p-3 border-b">${dataset.name}</td>
+                    <td class="p-3 border-b text-sm text-gray-500">${dataset.description}</td>
+                    <td class="p-3 border-b"><span class="badge badge-${dataset.category}">${dataset.category}</span></td>
+                    <td class="p-3 border-b">${dataset.format.toUpperCase()}</td>
+                    <td class="p-3 border-b">${formatFileSize(dataset.size)}</td>
+                    <td class="p-3 border-b">${formatDate(dataset.lastUpdated)}</td>
+                    <td class="p-3 border-b text-right">
+                        <button class="p-1 text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                        </button>
+                    </td>
+                `;
+                
+                row.addEventListener('click', () => showDatasetDetails(dataset.id));
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Show dataset details in modal
+        function showDatasetDetails(datasetId) {
+            const dataset = datasets.find(d => d.id === datasetId);
+            if (!dataset) return;
+
+            // Set modal content
+            document.getElementById('modal-title').textContent = dataset.name;
+            document.getElementById('modal-description').textContent = dataset.description;
+            document.getElementById('modal-source').textContent = dataset.source;
+            document.getElementById('modal-format').textContent = dataset.format.toUpperCase();
+            document.getElementById('modal-size').textContent = formatFileSize(dataset.size);
+            document.getElementById('modal-date').textContent = formatDate(dataset.lastUpdated);
+            
+            // Set tags
+            const tagsContainer = document.getElementById('modal-tags');
+            tagsContainer.innerHTML = '';
+            dataset.tags.forEach(tag => {
+                const tagEl = document.createElement('span');
+                tagEl.className = 'badge bg-gray-100 text-gray-800';
+                tagEl.textContent = tag;
+                tagsContainer.appendChild(tagEl);
+            });
+            
+            // Set metadata
+            document.getElementById('modal-metadata').textContent = JSON.stringify(dataset.metadata, null, 2);
+            
+            // Set preview table
+            const previewHeaders = document.getElementById('preview-headers');
+            const previewBody = document.getElementById('preview-body');
+            previewHeaders.innerHTML = '';
+            previewBody.innerHTML = '';
+            
+            if (dataset.metadata.columns) {
+                dataset.metadata.columns.forEach(column => {
+                    const th = document.createElement('th');
+                    th.className = 'p-2 border-b text-left';
+                    th.textContent = column;
+                    previewHeaders.appendChild(th);
+                });
+                
+                // Add sample data row
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="${dataset.metadata.columns.length}" class="p-4 text-center text-gray-500">Data preview will be loaded here</td>`;
+                previewBody.appendChild(tr);
+            }
+            
+            // Show modal
+            document.getElementById('dataset-modal').style.display = 'flex';
+        }
+    </script>
+</body>
+</html>

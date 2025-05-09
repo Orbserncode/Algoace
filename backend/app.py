@@ -7,7 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 # Import scheduler function
-from scheduler import run_scheduler_on_startup
+try:
+    # When running as a module from project root
+    from backend.scheduler import run_scheduler_on_startup
+except ImportError:
+    # When running directly from backend directory
+    from scheduler import run_scheduler_on_startup
 
 # Define lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -16,7 +21,20 @@ async def lifespan(app: FastAPI):
     print("FastAPI application starting up...")
     # In a real application, we would initialize the database here
     # For now, we'll just print a message
-    print("Database check/creation complete.")
+    # Create database tables
+    try:
+        try:
+            # When running as a module from project root
+            from backend.database import create_db_and_tables
+            create_db_and_tables()
+            print("Database check/creation complete.")
+        except ImportError:
+            # When running directly from backend directory
+            from database import create_db_and_tables
+            create_db_and_tables()
+            print("Database check/creation complete.")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
     
     # Start the scheduler for automated strategy generation
     try:
@@ -43,15 +61,51 @@ app = FastAPI(
 origins = [
     "http://localhost:9002", # Default Next.js dev port specified in package.json
     "http://localhost:3000", # Common alternative Next.js port
+    "https://*.app.github.dev", # GitHub Codespace URLs
+    "*", # Allow all origins for testing
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"], # Allows all methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"], # Allows all headers
 )
+
+# --- Include Routers ---
+try:
+    # When running as a module from project root
+    from backend.api import datasets, recommendations, monitoring, agents, strategies, backtesting
+    from backend.api import file_based_agents, file_based_strategies
+except ImportError:
+    # When running directly from backend directory
+    from api import datasets, recommendations, monitoring, agents, strategies, backtesting
+    from api import file_based_agents, file_based_strategies
+
+# Include the datasets router
+app.include_router(datasets.router)
+
+# Include the recommendations router
+app.include_router(recommendations.router)
+
+# Include the monitoring router
+app.include_router(monitoring.router, prefix="/monitoring")
+
+# Include the agents router (database-based)
+app.include_router(agents.router)
+
+# Include the file-based agents router (reads from Python files)
+app.include_router(file_based_agents.router)
+
+# Include the strategies router (database-based)
+app.include_router(strategies.router)
+
+# Include the file-based strategies router (reads from Python files)
+app.include_router(file_based_strategies.router)
+
+# Include the backtesting router
+app.include_router(backtesting.router)
 
 # --- Root Endpoint ---
 @app.get("/")

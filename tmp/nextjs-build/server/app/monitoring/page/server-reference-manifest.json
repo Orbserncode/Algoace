@@ -1,0 +1,16 @@
+{
+  "node": {
+    "40358ab3f3661ddef8cac585d8f8139cca6d752b41": {
+      "workers": {
+        "app/monitoring/page": {
+          "moduleId": "[project]/.next-internal/server/app/monitoring/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/ai/flows/suggest-strategy-config.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/monitoring/page": "action-browser"
+      }
+    }
+  },
+  "edge": {}
+}

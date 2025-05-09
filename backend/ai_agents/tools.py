@@ -1,6 +1,9 @@
 # backend/ai_agents/tools.py
 from pydantic import BaseModel, Field
-from typing import Type, List, Callable, Dict, Any
+from typing import Type, List, Callable, Dict, Any, Optional
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend import schemas
 
 # --- Tool Definitions ---

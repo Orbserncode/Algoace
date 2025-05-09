@@ -1,0 +1,33 @@
+{
+  "node": {
+    "401e8ebf9098c2dafe188d60ffe9329ee2376f015e": {
+      "workers": {
+        "app/backtesting/page": {
+          "moduleId": "[project]/.next-internal/server/app/backtesting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/ai/flows/summarize-backtest-results.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/ai/flows/suggest-strategy-config.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        },
+        "app/strategies/page": {
+          "moduleId": "[project]/.next-internal/server/app/strategies/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/ai/flows/suggest-strategy-config.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/backtesting/page": "action-browser",
+        "app/strategies/page": "action-browser"
+      }
+    },
+    "402242002159bba4a2f66c736e00796d1eb54754b2": {
+      "workers": {
+        "app/backtesting/page": {
+          "moduleId": "[project]/.next-internal/server/app/backtesting/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/ai/flows/summarize-backtest-results.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/ai/flows/suggest-strategy-config.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/backtesting/page": "action-browser"
+      }
+    }
+  },
+  "edge": {},
+  "encryptionKey": "o0v3LlJXHf8j/hcKdo1Kyz/fRJIeQR6BkqQUSNZ0ppA="
+}

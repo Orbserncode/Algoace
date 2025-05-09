@@ -1,0 +1,19 @@
+{
+  "app": {
+    "[project]/src/app/backtesting/page": [
+      "static/media/Geist_Variable-s.p.f406b17f.woff2"
+    ],
+    "[project]/src/app/datasets/page": [
+      "static/media/Geist_Variable-s.p.f406b17f.woff2"
+    ],
+    "[project]/src/app/page": [
+      "static/media/Geist_Variable-s.p.f406b17f.woff2"
+    ],
+    "[project]/src/app/strategies/page": [
+      "static/media/Geist_Variable-s.p.f406b17f.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}

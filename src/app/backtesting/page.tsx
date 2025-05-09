@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarIcon, Loader2, AlertTriangle, MessageSquareText } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, AlertTriangle, MessageSquareText, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getStrategies, Strategy } from '@/services/strategies-service';
 import { getAvailableAssets } from '@/services/broker-service'; // Mock service for assets
-import { runBacktest, getBacktestResults, BacktestResults, getBacktestJobStatus } from '@/services/backtesting-service';
+import { runBacktest, getBacktestResults, BacktestResults, getBacktestJobStatus, checkDatasetAvailability } from '@/services/backtesting-service';
 import { summarizeBacktestResults } from '@/ai/flows/summarize-backtest-results';
 import { PerformanceChart } from '@/app/monitoring/_components/performance-chart'; // Reuse chart
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,6 +50,11 @@ enum BacktestState {
     COMPLETE = 'complete',
     ERROR = 'error',
 }
+
+// Type guard to check if a state is one of the specified states
+const isState = (state: BacktestState, ...validStates: BacktestState[]): boolean => {
+    return validStates.includes(state);
+};
 
 // Helper to format numbers/currency/percentage
 const formatValue = (value: number | undefined, type: 'currency' | 'percentage' | 'number' | 'factor') => {
@@ -96,6 +103,10 @@ export default function BacktestingPage() {
     const [error, setError] = useState<string | null>(null);
     const [jobId, setJobId] = useState<string | null>(null); // To track the running job
     const [isInitialDataLoading, setIsInitialDataLoading] = useState(true); // Track initial load
+    const [isBrokerConnected, setIsBrokerConnected] = useState(false); // Track if broker is connected
+    const [isTickDataAvailable, setIsTickDataAvailable] = useState(true); // Track if tick data is available
+    const [showDownloadDialog, setShowDownloadDialog] = useState(false); // Control download dialog visibility
+    const [isDownloading, setIsDownloading] = useState(false); // Track download state
 
     const form = useForm<BacktestFormData>({
         resolver: zodResolver(backtestFormSchema),
@@ -110,21 +121,29 @@ export default function BacktestingPage() {
         },
     });
 
-    // Fetch strategies and assets on mount
+    // Fetch strategies and check broker connection on mount
     useEffect(() => {
         async function loadInitialData() {
             setIsInitialDataLoading(true); // Start loading
             try {
                 // Fetch only non-archived strategies for the dropdown
-                const [fetchedStrategies, fetchedAssets] = await Promise.all([
-                    getStrategies(false), // Fetch non-archived
-                    getAvailableAssets()
-                ]);
+                const fetchedStrategies = await getStrategies(false);
                 setStrategies(fetchedStrategies);
-                setAssets(fetchedAssets);
+                
+                // Check if broker is connected by trying to get configured brokers
+                const { getConfiguredBrokers } = await import('@/services/settings-service');
+                const brokers = await getConfiguredBrokers();
+                const brokerConnected = brokers && brokers.length > 0;
+                setIsBrokerConnected(brokerConnected);
+                
+                // Only fetch assets if broker is connected
+                if (brokerConnected) {
+                    const fetchedAssets = await getAvailableAssets();
+                    setAssets(fetchedAssets);
+                }
             } catch (err) {
                 console.error("Failed to load initial data:", err);
-                setError("Failed to load strategies or assets. Please refresh.");
+                setError("Failed to load strategies or broker connection. Please refresh.");
                 toast({ title: "Error", description: "Could not load initial data.", variant: "destructive" });
             } finally {
                 setIsInitialDataLoading(false); // Finish loading
@@ -203,6 +222,163 @@ export default function BacktestingPage() {
              toast({ title: "Error Loading Results", description: errorMsg, variant: "destructive" });
          }
     }
+    
+    // Check if tick data is available when asset and timeframe are selected
+    const selectedAsset = form.watch('asset');
+    const selectedTimeframe = form.watch('timeframe');
+    
+    // State for dataset information
+    const [datasetInfo, setDatasetInfo] = useState<{
+        available: boolean;
+        count: number;
+        start_date?: string;
+        end_date?: string;
+        has_date_range: boolean;
+    }>({ available: false, count: 0, has_date_range: false });
+
+    useEffect(() => {
+        async function checkTickDataAvailability() {
+            if (!selectedAsset || !selectedTimeframe) {
+                setIsTickDataAvailable(true); // Default to true when nothing selected
+                setDatasetInfo({ available: false, count: 0, has_date_range: false });
+                return;
+            }
+            
+            try {
+                console.log(`Checking if tick data is available for ${selectedAsset} (${selectedTimeframe})...`);
+                const availability = await checkDatasetAvailability(selectedAsset, selectedTimeframe);
+                setIsTickDataAvailable(availability.available);
+                setDatasetInfo(availability);
+                console.log(`Tick data for ${selectedAsset} (${selectedTimeframe}) is ${availability.available ? 'available' : 'not available'}`);
+                
+                // If dataset has date range, update form date values if they're outside the range
+                if (availability.has_date_range && availability.start_date && availability.end_date) {
+                    const datasetStartDate = new Date(availability.start_date);
+                    const datasetEndDate = new Date(availability.end_date);
+                    
+                    const currentStartDate = form.getValues('startDate');
+                    const currentEndDate = form.getValues('endDate');
+                    
+                    // Adjust start date if it's before dataset start date
+                    if (currentStartDate && currentStartDate < datasetStartDate) {
+                        form.setValue('startDate', datasetStartDate);
+                        toast({
+                            title: "Date Adjusted",
+                            description: `Start date adjusted to match available data (${format(datasetStartDate, "PPP")})`,
+                            variant: "default"
+                        });
+                    }
+                    
+                    // Adjust end date if it's after dataset end date
+                    if (currentEndDate && currentEndDate > datasetEndDate) {
+                        form.setValue('endDate', datasetEndDate);
+                        toast({
+                            title: "Date Adjusted",
+                            description: `End date adjusted to match available data (${format(datasetEndDate, "PPP")})`,
+                            variant: "default"
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to check tick data availability:", err);
+                setIsTickDataAvailable(false); // Assume not available on error
+                setDatasetInfo({ available: false, count: 0, has_date_range: false });
+            }
+        }
+        
+        checkTickDataAvailability();
+    }, [selectedAsset, selectedTimeframe, form, toast]);
+    // Handle tick data download
+    const handleDownloadTickData = async () => {
+        if (!selectedAsset || !selectedTimeframe) return;
+        
+        const startDate = form.getValues('startDate');
+        const endDate = form.getValues('endDate');
+        
+        if (!startDate || !endDate) {
+            toast({
+                title: "Missing Date Range",
+                description: "Please select start and end dates for the download.",
+                variant: "destructive"
+            });
+            return;
+        }
+        
+        // Check if we need to download additional data
+        if (datasetInfo.has_date_range && datasetInfo.start_date && datasetInfo.end_date) {
+            const datasetStartDate = new Date(datasetInfo.start_date);
+            const datasetEndDate = new Date(datasetInfo.end_date);
+            
+            // If requested dates are within available range, no need to download
+            if (startDate >= datasetStartDate && endDate <= datasetEndDate) {
+                toast({
+                    title: "Data Already Available",
+                    description: `The requested date range is already available in the database.`,
+                    variant: "default"
+                });
+                
+                // Set tick data as available and proceed
+                setIsTickDataAvailable(true);
+                return;
+            }
+            
+            // Show a more specific message about what data needs to be downloaded
+            const needEarlierData = startDate < datasetStartDate;
+            const needLaterData = endDate > datasetEndDate;
+            
+            let message = "Need to download ";
+            if (needEarlierData && needLaterData) {
+                message += `data before ${format(datasetStartDate, "PPP")} and after ${format(datasetEndDate, "PPP")}`;
+            } else if (needEarlierData) {
+                message += `data before ${format(datasetStartDate, "PPP")}`;
+            } else if (needLaterData) {
+                message += `data after ${format(datasetEndDate, "PPP")}`;
+            }
+            
+            toast({
+                title: "Downloading Additional Data",
+                description: message,
+                variant: "default"
+            });
+        }
+        
+        
+        setIsDownloading(true);
+        
+        try {
+            const { downloadTickData } = await import('@/services/broker-service');
+            const success = await downloadTickData(
+                selectedAsset,
+                selectedTimeframe,
+                format(startDate, "yyyy-MM-dd"),
+                format(endDate, "yyyy-MM-dd")
+            );
+            
+            if (success) {
+                toast({
+                    title: "Download Complete",
+                    description: `Successfully downloaded ${selectedAsset} ${selectedTimeframe} data.`
+                });
+                setIsTickDataAvailable(true);
+                setShowDownloadDialog(false);
+            } else {
+                toast({
+                    title: "Download Failed",
+                    description: "Could not download the requested data. Please try again.",
+                    variant: "destructive"
+                });
+            }
+        } catch (err) {
+            console.error("Failed to download tick data:", err);
+            toast({
+                title: "Download Error",
+                description: `Error downloading data: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                variant: "destructive"
+            });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
     async function onSubmit(values: BacktestFormData) {
         setBacktestState(BacktestState.QUEUING);
@@ -315,62 +491,75 @@ export default function BacktestingPage() {
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Asset/Symbol</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading || !isBrokerConnected}>
                                     <FormControl>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select asset..." />
+                                            <SelectValue placeholder={isBrokerConnected ? "Select asset..." : "No broker connected"} />
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
                                          {isInitialDataLoading && <SelectItem value="loading-assets" disabled>Loading assets...</SelectItem>}
-                                         {!isInitialDataLoading && assets.length === 0 && <SelectItem value="no-assets" disabled>No assets available.</SelectItem>}
-                                         {!isInitialDataLoading && assets.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                                        {/* Add option for custom input? */}
+                                         {!isInitialDataLoading && !isBrokerConnected && <SelectItem value="no-broker" disabled>Connect a broker in settings first</SelectItem>}
+                                         {!isInitialDataLoading && isBrokerConnected && assets.length === 0 && <SelectItem value="no-assets" disabled>No assets available.</SelectItem>}
+                                         {!isInitialDataLoading && isBrokerConnected && assets.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
-                                <FormDescription>Asset provided by your broker config.</FormDescription>
+                                <FormDescription>
+                                    {isBrokerConnected
+                                        ? "Asset provided by your broker config."
+                                        : "Connect a broker in settings to see available assets."}
+                                </FormDescription>
                                 <FormMessage />
                             </FormItem>
                         )}
                     />
-                     <FormField
+                    
+                    {/* Display date range information if available */}
+                    {datasetInfo.has_date_range && datasetInfo.start_date && datasetInfo.end_date && (
+                        <div className="col-span-2 bg-muted p-3 rounded-md text-sm">
+                            <div className="flex items-center space-x-2 text-muted-foreground">
+                                <CalendarIcon className="h-4 w-4" />
+                                <span>Available data range: {format(new Date(datasetInfo.start_date), "PPP")} to {format(new Date(datasetInfo.end_date), "PPP")}</span>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <FormField
                         control={form.control}
                         name="startDate"
                         render={({ field }) => (
                              <FormItem className="flex flex-col">
                                 <FormLabel>Start Date</FormLabel>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <FormControl>
-                                            <Button
-                                                variant={"outline"}
-                                                className={cn(
-                                                "w-full pl-3 text-left font-normal",
-                                                !field.value && "text-muted-foreground"
-                                                )}
-                                                 disabled={isLoading}
-                                            >
-                                                {field.value ? (
-                                                    format(field.value, "PPP")
-                                                ) : (
-                                                    <span>Pick a start date</span>
-                                                )}
-                                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                <div className="flex space-x-2">
+                                    <Input
+                                        type="date"
+                                        value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
+                                        onChange={(e) => {
+                                            const date = e.target.value ? new Date(e.target.value) : null;
+                                            if (date) field.onChange(date);
+                                        }}
+                                        disabled={isLoading}
+                                        className="w-full"
+                                    />
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="icon" disabled={isLoading}>
+                                                <CalendarIcon className="h-4 w-4" />
                                             </Button>
-                                        </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={field.onChange}
-                                            disabled={(date) =>
-                                                date > new Date() || date < new Date("1990-01-01") || isLoading
-                                            }
-                                            initialFocus
-                                        />
-                                    </PopoverContent>
-                                </Popover>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="end">
+                                            <Calendar
+                                                mode="single"
+                                                selected={field.value}
+                                                onSelect={field.onChange}
+                                                disabled={(date) =>
+                                                    date > new Date() || date < new Date("1990-01-01") || isLoading
+                                                }
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -381,38 +570,36 @@ export default function BacktestingPage() {
                         render={({ field }) => (
                              <FormItem className="flex flex-col">
                                 <FormLabel>End Date</FormLabel>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <FormControl>
-                                            <Button
-                                                variant={"outline"}
-                                                className={cn(
-                                                "w-full pl-3 text-left font-normal",
-                                                !field.value && "text-muted-foreground"
-                                                )}
-                                                 disabled={isLoading}
-                                            >
-                                                {field.value ? (
-                                                    format(field.value, "PPP")
-                                                ) : (
-                                                    <span>Pick an end date</span>
-                                                )}
-                                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                <div className="flex space-x-2">
+                                    <Input
+                                        type="date"
+                                        value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
+                                        onChange={(e) => {
+                                            const date = e.target.value ? new Date(e.target.value) : null;
+                                            if (date) field.onChange(date);
+                                        }}
+                                        disabled={isLoading}
+                                        className="w-full"
+                                    />
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="icon" disabled={isLoading}>
+                                                <CalendarIcon className="h-4 w-4" />
                                             </Button>
-                                        </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar
-                                            mode="single"
-                                            selected={field.value}
-                                            onSelect={field.onChange}
-                                            disabled={(date) =>
-                                                date > new Date() || date < new Date("1990-01-01") || isLoading
-                                            }
-                                            initialFocus
-                                        />
-                                    </PopoverContent>
-                                </Popover>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="end">
+                                            <Calendar
+                                                mode="single"
+                                                selected={field.value}
+                                                onSelect={field.onChange}
+                                                disabled={(date) =>
+                                                    date > new Date() || date < new Date("1990-01-01") || isLoading
+                                                }
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -457,27 +644,50 @@ export default function BacktestingPage() {
                         )}
                     />
                 </div>
-                 {/* Disable button during queuing, running, fetching */}
-                <Button type="submit" disabled={backtestState !== BacktestState.IDLE && backtestState !== BacktestState.COMPLETE && backtestState !== BacktestState.ERROR} className="w-full md:w-auto">
-                    {backtestState === BacktestState.QUEUING ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Queuing Backtest...
-                        </>
-                     ) : backtestState === BacktestState.RUNNING ? (
-                         <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Running Job {jobId?.substring(0, 8)}...
-                        </>
-                     ) : backtestState === BacktestState.FETCHING ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Fetching Results...
-                         </>
-                     ) : (
-                        "Run Backtest"
-                    )}
-                </Button>
+                 <div className="flex flex-col md:flex-row gap-4">
+                     {/* Disable button during queuing, running, fetching */}
+                     <Button
+                         type="submit"
+                         disabled={
+                             (backtestState !== BacktestState.IDLE &&
+                             backtestState !== BacktestState.COMPLETE &&
+                             backtestState !== BacktestState.ERROR) ||
+                             !isTickDataAvailable
+                         }
+                         className="w-full md:w-auto"
+                     >
+                         {backtestState === BacktestState.QUEUING ? (
+                             <>
+                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                 Queuing Backtest...
+                             </>
+                         ) : backtestState === BacktestState.RUNNING ? (
+                             <>
+                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                 Running Job {jobId?.substring(0, 8)}...
+                             </>
+                         ) : backtestState === BacktestState.FETCHING ? (
+                             <>
+                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                 Fetching Results...
+                             </>
+                         ) : (
+                             "Run Backtest"
+                         )}
+                     </Button>
+                     
+                     {/* Download Data button - only show when data is not available and asset/timeframe are selected */}
+                     {selectedAsset && selectedTimeframe && !isTickDataAvailable && (
+                         <Button
+                             type="button"
+                             variant="outline"
+                             onClick={() => setShowDownloadDialog(true)}
+                             className="w-full md:w-auto"
+                         >
+                             Download Required Data
+                         </Button>
+                     )}
+                 </div>
                  {/* Display general error if form submission or polling fails */}
                  {backtestState === BacktestState.ERROR && error && !backtestResults && (
                     <div className="text-destructive text-sm mt-2 flex items-center">
@@ -487,6 +697,92 @@ export default function BacktestingPage() {
                  )}
             </form>
         </Form>
+    );
+    
+    // Render download dialog
+    const renderDownloadDialog = () => (
+        <Dialog open={showDownloadDialog} onOpenChange={setShowDownloadDialog}>
+            <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                    <DialogTitle>Download Market Data</DialogTitle>
+                    <DialogDescription>
+                        {isBrokerConnected ? (
+                            <>
+                                Historical data for {selectedAsset} ({selectedTimeframe}) is not available.
+                                Download it using the date range from your backtest configuration.
+                            </>
+                        ) : (
+                            <>
+                                <AlertTriangle className="h-4 w-4 text-amber-500 inline-block mr-1" />
+                                <span className="text-amber-500 font-medium">No broker or data source configured.</span>
+                                <p className="mt-2">
+                                    Please configure a broker or data source in the Settings page before downloading data.
+                                    You can also configure alternative data sources like Yahoo Finance.
+                                </p>
+                            </>
+                        )}
+                    </DialogDescription>
+                </DialogHeader>
+                
+                {isBrokerConnected ? (
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <FormLabel>Start Date</FormLabel>
+                                <Input
+                                    type="text"
+                                    value={form.getValues('startDate') ? format(form.getValues('startDate'), "PPP") : ''}
+                                    disabled
+                                />
+                            </div>
+                            <div>
+                                <FormLabel>End Date</FormLabel>
+                                <Input
+                                    type="text"
+                                    value={form.getValues('endDate') ? format(form.getValues('endDate'), "PPP") : ''}
+                                    disabled
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <FormLabel>Asset</FormLabel>
+                            <Input type="text" value={selectedAsset} disabled />
+                        </div>
+                        <div>
+                            <FormLabel>Timeframe</FormLabel>
+                            <Input type="text" value={selectedTimeframe} disabled />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-4">
+                        <Button variant="secondary" onClick={() => window.location.href = '/settings'}>
+                            Go to Settings
+                        </Button>
+                    </div>
+                )}
+                
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowDownloadDialog(false)} disabled={isDownloading}>
+                        Cancel
+                    </Button>
+                    {isBrokerConnected && (
+                        <Button onClick={handleDownloadTickData} disabled={isDownloading}>
+                            {isDownloading ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Downloading...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download Data
+                                </>
+                            )}
+                        </Button>
+                    )}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 
     const renderResults = () => {
@@ -600,9 +896,9 @@ export default function BacktestingPage() {
                              <Button
                                   size="sm"
                                   onClick={handleGenerateSummary}
-                                  disabled={backtestState === BacktestState.SUMMARIZING}
+                                  disabled={isState(backtestState, BacktestState.SUMMARIZING)}
                                 >
-                                  {backtestState === BacktestState.SUMMARIZING ? (
+                                  {isState(backtestState, BacktestState.SUMMARIZING) ? (
                                       <>
                                           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...
                                       </>
@@ -615,7 +911,7 @@ export default function BacktestingPage() {
                          </CardHeader>
                          <CardContent>
                               {/* Show error specific to summary generation */}
-                             {error && backtestState === BacktestState.COMPLETE && ( // Only show summary error here if results are loaded but summary failed
+                             {error && isState(backtestState, BacktestState.COMPLETE) && ( // Only show summary error here if results are loaded but summary failed
                                   <p className="text-sm text-destructive flex items-center">
                                       <AlertTriangle className="mr-1 h-4 w-4" /> {error}
                                   </p>
@@ -623,10 +919,10 @@ export default function BacktestingPage() {
                              {!error && aiSummary && ( // Show summary if no error for summary and it exists
                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{aiSummary}</p>
                              )}
-                             {!error && !aiSummary && backtestState !== BacktestState.SUMMARIZING && ( // Prompt to generate if no error and no summary
+                             {!error && !aiSummary && !isState(backtestState, BacktestState.SUMMARIZING) && ( // Prompt to generate if no error and no summary
                                  <p className="text-sm text-muted-foreground">Click "Generate Summary" for an AI interpretation.</p>
                               )}
-                              {backtestState === BacktestState.SUMMARIZING && ( // Show loading state while summarizing
+                              {isState(backtestState, BacktestState.SUMMARIZING) && ( // Show loading state while summarizing
                                  <div className="flex items-center text-muted-foreground">
                                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                       <span>Generating AI summary...</span>
@@ -638,7 +934,7 @@ export default function BacktestingPage() {
                      {/* Advanced Visualizations */}
                     <AdvancedVisualizations
                         trades={backtestResults.trades || []}
-                        isLoading={backtestState === BacktestState.FETCHING}
+                        isLoading={isState(backtestState, BacktestState.FETCHING)}
                         equityCurve={candlestickData} // Pass transformed data
                      />
 

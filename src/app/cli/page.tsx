@@ -81,13 +81,78 @@ export default function CliPage() {
     }
     // Handle exact match commands
     else if (lowerCaseCommand === 'help') {
-      responseText = `Available commands:\n  start <strategy_id>   - Start a strategy\n  stop <strategy_id>    - Stop a strategy\n  status [strategy_id] - Show status\n  list strategies     - List all strategies\n  list agents         - List all agents\n  config <key> [value] - View or set config\n  clear               - Clear the console\n  help                - Show this help message`;
+      responseText = `Available commands:\n  start <strategy_id>   - Start a strategy\n  stop <strategy_id>    - Stop a strategy\n  status [strategy_id] - Show status\n  list strategies     - List all strategies\n  list agents         - List all agents\n  config <key> [value] - View or set config\n  ssh info            - Show SSH access information\n  clear               - Clear the console\n  help                - Show this help message`;
     } else if (lowerCaseCommand === 'list strategies') {
       responseText = `Strategies:\n  strat-001: Momentum Burst (Active)\n  strat-002: Mean Reversion Scalper (Inactive)\n  strat-003: AI Trend Follower (Active)\n  strat-004: Arbitrage Finder (Debugging)`;
     } else if (lowerCaseCommand === 'list agents') {
       responseText = `Agents:\n  agent-001: Strategy Generator (Running)\n  agent-002: Execution Agent - Momentum (Running)\n  agent-003: Market Scanner (Running)\n  agent-004: Execution Agent - AI Trend (Idle)\n  agent-005: Risk Management Agent (Running)`;
     } else if (lowerCaseCommand === 'status') {
       responseText = `Platform Status: Running\nActive Strategies: 2\nAgents Running: 4\nErrors: 4`;
+    } else if (lowerCaseCommand === 'ssh info') {
+      responseText = `
+SSH Access Information:
+======================
+
+Generate SSH Keys:
+-----------------
+# Linux/macOS Terminal
+ssh-keygen -t ed25519 -C "your_email@example.com" -f ~/.ssh/algoace_key
+
+# Windows PowerShell
+ssh-keygen -t ed25519 -C "your_email@example.com" -f "$env:USERPROFILE\\.ssh\\algoace_key"
+
+# Windows Command Prompt
+ssh-keygen -t ed25519 -C "your_email@example.com" -f "%USERPROFILE%\\.ssh\\algoace_key"
+
+Secure Your Private Key:
+-----------------------
+# Linux/macOS Terminal
+chmod 600 ~/.ssh/algoace_key
+
+Connect to AlgoAce:
+------------------
+# Linux/macOS Terminal
+ssh -i ~/.ssh/algoace_key user@algoace-server.example.com -p 2222
+
+# Windows PowerShell
+ssh -i "$env:USERPROFILE\\.ssh\\algoace_key" user@algoace-server.example.com -p 2222
+
+# Windows Command Prompt
+ssh -i "%USERPROFILE%\\.ssh\\algoace_key" user@algoace-server.example.com -p 2222
+
+Add to SSH Config (for easier access):
+-------------------------------------
+# Add to ~/.ssh/config (Linux/macOS) or %USERPROFILE%\\.ssh\\config (Windows)
+Host algoace
+    HostName algoace-server.example.com
+    User user
+    Port 2222
+    IdentityFile ~/.ssh/algoace_key
+    IdentitiesOnly yes
+
+# Then connect simply with:
+ssh algoace
+
+Security Best Practices:
+-----------------------
+1. Use strong passphrases for your SSH keys
+2. Keep private keys secure and never share them
+3. Use SSH key authentication only (password auth is disabled)
+4. Server uses only modern, secure ciphers and protocols
+5. SSH access is restricted by IP and uses fail2ban protection
+6. All connections are logged and monitored
+
+Remote Commands:
+--------------
+# Start a strategy
+ssh algoace "algoace-cli start strat-001"
+
+# Check system status
+ssh algoace "algoace-cli status"
+
+# View logs
+ssh algoace "tail -f /var/log/algoace/system.log"
+`;
     } else if (lowerCaseCommand === '') {
       responseText = ''; // No output for empty command
     }

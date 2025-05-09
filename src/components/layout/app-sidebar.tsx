@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   FileCode,
   History, // Import History icon for Backtesting
+  Database, // Import Database icon for Datasets
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -28,8 +29,10 @@ import { Button } from '@/components/ui/button';
 const menuItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/strategies', label: 'Strategies', icon: FileCode },
-  { href: '/backtesting', label: 'Backtesting', icon: History }, // Added Backtesting item
+  { href: '/backtesting', label: 'Backtesting', icon: History },
+  { href: '/backtesting/history', label: 'Backtest History', icon: History },
   { href: '/monitoring', label: 'Monitoring', icon: LineChart },
+  { href: '/datasets', label: 'Datasets', icon: Database },
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/cli', label: 'CLI Control', icon: Terminal },
   { href: '/settings', label: 'Settings', icon: Settings },

@@ -2,6 +2,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal, Union, Dict, Any, ClassVar
 from enum import Enum
+from datetime import datetime
 
 # --- Tool Definitions (Mirroring frontend) ---
 class ToolNameEnum(str, Enum):
@@ -212,3 +213,34 @@ def parse_agent_config(agent_type_str: str, config_data: Optional[Dict[str, Any]
         # Or raise an error if the type is strictly one of the above.
         # For flexibility, let's assume a base config can exist.
         return BaseAgentConfig(**{'agent_type': AgentTypeEnumSchema.BASE.value, **config_data})
+
+
+# --- Strategy Config Schemas ---
+
+class StrategyConfigBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    config_data: Dict[str, Any]
+    strategy_id: Optional[str] = None
+    performance_summary: Optional[str] = None
+
+class StrategyConfigCreate(StrategyConfigBase):
+    source: Literal["AI-Generated", "User-Saved"] = "User-Saved"
+    
+class StrategyConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    config_data: Optional[Dict[str, Any]] = None
+    status: Optional[Literal["Active", "Archived"]] = None
+    performance_summary: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+class StrategyConfigRead(StrategyConfigBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    source: str
+    status: str
+    
+    class Config:
+        from_attributes = True

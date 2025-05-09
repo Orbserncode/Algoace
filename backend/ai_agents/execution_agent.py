@@ -64,7 +64,7 @@ class ExecutionInput(AgentTaskInput):
     trade_signals: List[TradeSignal]
     market_context: Optional[MarketContext] = None
     portfolio_status: Optional[PortfolioStatus] = None
-    require_confirmation: bool = Field(default=True, description="Whether to require confirmation from other agents")
+    require_confirmation: bool = Field(default=True, description="Whether to require confirmation from risk, portfolio, and research agents")
     dry_run: bool = Field(default=False, description="Whether to simulate execution without placing actual orders")
 
 class ExecutionOutput(AgentTaskOutput):
@@ -387,6 +387,36 @@ class ExecutionAIAgent(PydanticAIAgent[ExecutionInput, ExecutionOutput]):
                         "message": "Trade aligns with portfolio strategy, but deviates from target allocation",
                         "warnings": ["Deviates from target allocation"]
                     }
+            elif agent_type == "research":
+                # Research agent checks if the trade is supported by market research and analysis
+                symbol = trade_signal.get("symbol", "")
+                direction = trade_signal.get("direction", "")
+                
+                # Simulate some research checks
+                if direction == "buy" and symbol in ["AAPL", "MSFT", "AMZN", "GOOGL"]:
+                    return {
+                        "confirmed": True,
+                        "message": "Trade is supported by recent market research and analysis",
+                        "warnings": []
+                    }
+                elif direction == "sell" and symbol in ["XYZ", "ABC"]:
+                    return {
+                        "confirmed": True,
+                        "message": "Sell recommendation aligns with recent market analysis",
+                        "warnings": []
+                    }
+                elif direction == "buy" and symbol in ["SPY", "QQQ"]:
+                    return {
+                        "confirmed": True,
+                        "message": "Trade is supported by research, but market indicators show mixed signals",
+                        "warnings": ["Mixed market signals detected"]
+                    }
+                else:
+                    return {
+                        "confirmed": False,
+                        "message": "Insufficient research data to support this trade",
+                        "warnings": ["No recent analysis available for this asset"]
+                    }
             else:
                 # Unknown agent type
                 return {
@@ -473,7 +503,13 @@ class ExecutionAIAgent(PydanticAIAgent[ExecutionInput, ExecutionOutput]):
                                 agent_type="portfolio"
                             )
                             
-                            confirmations = [risk_confirmation, portfolio_confirmation]
+                            research_confirmation = await self.pydantic_agent.get_agent_confirmation(
+                                RunContext(deps=deps),
+                                trade_signal=modified_signal,
+                                agent_type="research"
+                            )
+                            
+                            confirmations = [risk_confirmation, portfolio_confirmation, research_confirmation]
                             
                             # Add any warnings from confirmations
                             for confirmation in confirmations:
@@ -521,7 +557,13 @@ class ExecutionAIAgent(PydanticAIAgent[ExecutionInput, ExecutionOutput]):
                                 agent_type="portfolio"
                             )
                             
-                            confirmations = [risk_confirmation, portfolio_confirmation]
+                            research_confirmation = await self.pydantic_agent.get_agent_confirmation(
+                                RunContext(deps=deps),
+                                trade_signal=signal_dict,
+                                agent_type="research"
+                            )
+                            
+                            confirmations = [risk_confirmation, portfolio_confirmation, research_confirmation]
                             
                             # Add any warnings from confirmations
                             for confirmation in confirmations:

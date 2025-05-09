@@ -2,8 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlmodel import Session
 from typing import List, Optional
 
-from .. import crud, models
-from ..database import get_session
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import crud
+from backend.models import StrategyRead, StrategyCreate, StrategyUpdate
+from database import get_session
 # TODO: Import file handling logic when implemented
 
 router = APIRouter(
@@ -12,11 +16,11 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.post("/", response_model=models.StrategyRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=StrategyRead, status_code=status.HTTP_201_CREATED)
 def create_new_strategy(
     *,
     session: Session = Depends(get_session),
-    strategy_in: models.StrategyCreate,
+    strategy_in: StrategyCreate,
     # TODO: Add file upload parameter when implementing file handling
     # strategy_file: Optional[UploadFile] = File(None),
 ):
@@ -40,7 +44,7 @@ def create_new_strategy(
     strategy = crud.create_strategy(session=session, strategy_in=strategy_in)
     return strategy
 
-@router.get("/", response_model=List[models.StrategyRead])
+@router.get("/", response_model=List[StrategyRead])
 def read_strategies(
     skip: int = 0,
     limit: int = 100,
@@ -52,7 +56,7 @@ def read_strategies(
     strategies = crud.get_strategies(session=session, skip=skip, limit=limit)
     return strategies
 
-@router.get("/{strategy_id}", response_model=models.StrategyRead)
+@router.get("/{strategy_id}", response_model=StrategyRead)
 def read_strategy(
     *,
     session: Session = Depends(get_session),
@@ -66,12 +70,12 @@ def read_strategy(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found")
     return strategy
 
-@router.patch("/{strategy_id}", response_model=models.StrategyRead)
+@router.patch("/{strategy_id}", response_model=StrategyRead)
 def update_existing_strategy(
     *,
     session: Session = Depends(get_session),
     strategy_id: int,
-    strategy_in: models.StrategyUpdate,
+    strategy_in: StrategyUpdate,
 ):
     """
     Update a strategy (e.g., change status, description).
@@ -116,7 +120,7 @@ def schedule_strategy_generation(
     from datetime import datetime
     
     # Create a new strategy with scheduled generation
-    strategy_in = models.StrategyCreate(
+    strategy_in = StrategyCreate(
         name=f"Scheduled {schedule_type.capitalize()} Strategy {datetime.now().strftime('%Y-%m-%d')}",
         description=f"Automatically generated strategy with {schedule_type} schedule",
         status="Inactive",
@@ -169,7 +173,7 @@ def run_scheduled_generations(
             crud.update_strategy(
                 session=session,
                 strategy_id=strategy.id,
-                strategy_in=models.StrategyUpdate(last_generation_time=now.isoformat())
+                strategy_in=StrategyUpdate(last_generation_time=now.isoformat())
             )
             
             # TODO: Implement actual strategy generation logic here

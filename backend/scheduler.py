@@ -1,133 +1,62 @@
 """
-Scheduler for running scheduled tasks like strategy generation.
-This module provides functions to run scheduled tasks at specified intervals.
+Scheduler for automated tasks in AlgoAce Trader.
 """
-
 import asyncio
-import logging
+import threading
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+import time
 
-from sqlmodel import Session
-
-import crud
-from database import get_session
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Global variable to track if the scheduler is running
+# Flag to control the scheduler thread
 scheduler_running = False
+scheduler_thread = None
 
-async def run_scheduled_strategy_generations():
-    """
-    Run scheduled strategy generations based on their schedule type.
-    This function is meant to be run periodically by the scheduler.
-    """
-    logger.info("Running scheduled strategy generations...")
-    
-    # Create a new session for this task
-    session = next(get_session())
-    
-    try:
-        # Get all strategies with scheduled generation
-        strategies = crud.get_strategies_by_schedule(session=session)
-        
-        results = []
-        now = datetime.now()
-        
-        for strategy in strategies:
-            last_gen_time = None
-            if strategy.last_generation_time:
-                try:
-                    last_gen_time = datetime.fromisoformat(strategy.last_generation_time)
-                except ValueError:
-                    logger.error(f"Invalid last_generation_time format for strategy {strategy.id}: {strategy.last_generation_time}")
-                    continue
-            
-            should_generate = False
-            
-            # Check if generation is due based on schedule
-            if strategy.generation_schedule == "startup":
-                # Generate on startup if it hasn't been generated yet
-                should_generate = last_gen_time is None
-            elif strategy.generation_schedule == "daily" and last_gen_time:
-                # Generate if last generation was more than 24 hours ago
-                should_generate = (now - last_gen_time) > timedelta(days=1)
-            elif strategy.generation_schedule == "weekly" and last_gen_time:
-                # Generate if last generation was more than 7 days ago
-                should_generate = (now - last_gen_time) > timedelta(days=7)
-            
-            if should_generate:
-                logger.info(f"Generating strategy for scheduled strategy {strategy.id} ({strategy.name})")
-                
-                # Update last generation time
-                crud.update_strategy(
-                    session=session,
-                    strategy_id=strategy.id,
-                    strategy_in={"last_generation_time": now.isoformat()}
-                )
-                
-                # TODO: Implement actual strategy generation logic here
-                # This would call the AI strategy generation service
-                # For now, just log that it would be generated
-                
-                results.append({
-                    "strategy_id": strategy.id,
-                    "name": strategy.name,
-                    "schedule": strategy.generation_schedule,
-                    "status": "Generation triggered"
-                })
-        
-        logger.info(f"Processed {len(results)} scheduled generations")
-        return results
-    
-    except Exception as e:
-        logger.error(f"Error running scheduled strategy generations: {e}")
-        return []
-    finally:
-        session.close()
-
-async def scheduler_loop():
-    """
-    Main scheduler loop that runs tasks at specified intervals.
-    """
-    global scheduler_running
+def run_scheduler_on_startup():
+    """Start the scheduler thread when the application starts."""
+    global scheduler_running, scheduler_thread
     
     if scheduler_running:
-        logger.warning("Scheduler is already running. Ignoring this call.")
+        print("Scheduler is already running.")
         return
     
     scheduler_running = True
-    logger.info("Starting scheduler loop...")
+    scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
+    scheduler_thread.start()
+    print("Scheduler thread started.")
+
+def scheduler_loop():
+    """Main scheduler loop that runs in a separate thread."""
+    global scheduler_running
     
-    try:
-        while True:
-            # Run scheduled strategy generations
-            await run_scheduled_strategy_generations()
+    print("Scheduler loop started.")
+    
+    while scheduler_running:
+        try:
+            # Check for scheduled tasks
+            current_time = datetime.now()
             
-            # Sleep for 1 hour before checking again
-            # In a production environment, this could be more sophisticated
-            # with different intervals for different tasks
-            await asyncio.sleep(3600)  # 1 hour
-    except asyncio.CancelledError:
-        logger.info("Scheduler loop cancelled.")
-    except Exception as e:
-        logger.error(f"Error in scheduler loop: {e}")
-    finally:
-        scheduler_running = False
+            # TODO: Implement actual scheduled task checking
+            # For now, just log that we're checking
+            print(f"[Scheduler] Checking for scheduled tasks at {current_time}")
+            
+            # Sleep for a while before checking again (e.g., every minute)
+            time.sleep(60)
+            
+        except Exception as e:
+            print(f"Error in scheduler loop: {e}")
+            # Sleep a bit before retrying
+            time.sleep(10)
+    
+    print("Scheduler loop stopped.")
 
-async def start_scheduler():
-    """
-    Start the scheduler as a background task.
-    """
-    logger.info("Starting scheduler...")
-    asyncio.create_task(scheduler_loop())
-
-def run_scheduler_on_startup():
-    """
-    Function to be called on application startup to run the scheduler.
-    """
-    logger.info("Initializing scheduler on startup...")
-    asyncio.create_task(start_scheduler())
+def stop_scheduler():
+    """Stop the scheduler thread."""
+    global scheduler_running
+    
+    if not scheduler_running:
+        print("Scheduler is not running.")
+        return
+    
+    scheduler_running = False
+    if scheduler_thread:
+        scheduler_thread.join(timeout=5)
+        print("Scheduler thread stopped.")

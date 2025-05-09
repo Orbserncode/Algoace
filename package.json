@@ -4,12 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
+    "dev:clean": "rm -rf .next && next dev --turbopack -p 9002",
+    "dev:fast": "NODE_OPTIONS='--max_old_space_size=4096' NEXT_TELEMETRY_DISABLED=1 next dev --turbopack -p 9002",
+    "dev:optimized": "NODE_OPTIONS='--max_old_space_size=4096' NEXT_TELEMETRY_DISABLED=1 next dev --turbopack -p 9002",
+    "dev:ramdisk": "USE_RAMDISK=true NODE_OPTIONS='--max_old_space_size=4096' NEXT_TELEMETRY_DISABLED=1 next dev --turbopack -p 9002",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
+    "build:clean": "rm -rf .next && next build",
+    "build:optimized": "NODE_OPTIONS='--max_old_space_size=4096' NEXT_TELEMETRY_DISABLED=1 next build",
+    "build:ramdisk": "USE_RAMDISK=true NODE_OPTIONS='--max_old_space_size=4096' NEXT_TELEMETRY_DISABLED=1 next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cache:clear": "rm -rf .next"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.6.2",

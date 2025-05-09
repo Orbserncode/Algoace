@@ -53,11 +53,11 @@ export function PerformanceChart({
    const activeDataKeyY = dataKeyY as keyof PerformanceDataPoint; // Type assertion
 
    // Ensure the active data key exists in the config, default if not
-    const activeConfig = chartConfig[dataKeyY] || chartConfig['value'];
-    const dynamicLabel = yAxisLabel || activeConfig?.label || "Value ($)";
+    const activeConfig = chartConfig[dataKeyY as keyof typeof chartConfig] || chartConfig['value'];
+    const dynamicLabel = String(yAxisLabel || activeConfig?.label || "Value ($)");
 
    // Find min/max for dynamic Y-axis domains with padding
-    const values = data.map(d => d[activeDataKeyY]);
+    const values = data.map(d => Number(d[activeDataKeyY]));
     const minValue = Math.min(...values);
     const maxValue = Math.max(...values);
     const valuePadding = (maxValue - minValue) * 0.1 || 1000; // Add 10% padding or 1000
@@ -100,7 +100,7 @@ export function PerformanceChart({
                      if (isNaN(date.getTime())) return value;
                      // Use shorter format for potentially more data points in backtest
                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-                 } catch {
+                 } catch (error) {
                      return value;
                  }
               }}

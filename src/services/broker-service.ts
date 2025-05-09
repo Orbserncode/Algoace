@@ -18,8 +18,30 @@ const mockAssets: string[] = [
  * TODO: Replace with actual broker API call.
  * @returns A promise that resolves to an array of asset symbols (strings).
  */
-export async function getAvailableAssets(): Promise<string[]> {
-    console.log("Fetching available assets from broker...");
+export async function getAvailableAssets(brokerId?: string): Promise<string[]> {
+    console.log(`Fetching available assets from broker${brokerId ? ` (ID: ${brokerId})` : ''}...`);
+    
+    // Check if a broker is connected
+    if (!brokerId) {
+        // Get all configured brokers to check if any are available
+        try {
+            const { getConfiguredBrokers } = await import('./settings-service');
+            const brokers = await getConfiguredBrokers();
+            
+            if (!brokers || brokers.length === 0) {
+                console.log("No brokers configured. Cannot fetch assets.");
+                return []; // Return empty array if no brokers are configured
+            }
+            
+            // If no specific broker ID was provided but brokers exist,
+            // we'll use the first one in the list for backward compatibility
+            brokerId = brokers[0].id;
+        } catch (error) {
+            console.error("Error checking for configured brokers:", error);
+            return []; // Return empty array on error
+        }
+    }
+    
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 200));
 
@@ -32,6 +54,58 @@ export async function getAvailableAssets(): Promise<string[]> {
 
     console.log("Fetched available assets:", mockAssets.length);
     return [...mockAssets]; // Return a copy
+}
+
+/**
+ * Checks if tick data is available for the specified asset and timeframe.
+ * @param symbol The asset symbol to check
+ * @param timeframe The timeframe to check
+ * @returns A promise resolving to a boolean indicating if data is available
+ */
+export async function isTickDataAvailable(symbol: string, timeframe: string): Promise<boolean> {
+    console.log(`Checking if tick data is available for ${symbol} (${timeframe})...`);
+    
+    try {
+        // Make an API call to the backend to check if the dataset exists
+        const response = await fetch(`/api/datasets/check?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`);
+        
+        if (!response.ok) {
+            console.error(`Error checking dataset availability: ${response.statusText}`);
+            return false;
+        }
+        
+        const result = await response.json();
+        console.log(`Tick data for ${symbol} (${timeframe}) is ${result.available ? 'available' : 'not available'}`);
+        return result.available;
+    } catch (error) {
+        console.error(`Error checking tick data availability:`, error);
+        return false;
+    }
+}
+
+/**
+ * Downloads tick data for the specified asset, timeframe, and date range.
+ * @param symbol The asset symbol to download data for
+ * @param timeframe The timeframe to download
+ * @param startDate The start date for the data
+ * @param endDate The end date for the data
+ * @returns A promise resolving to a boolean indicating if the download was successful
+ */
+export async function downloadTickData(
+    symbol: string,
+    timeframe: string,
+    startDate: string,
+    endDate: string
+): Promise<boolean> {
+    console.log(`Downloading tick data for ${symbol} (${timeframe}) from ${startDate} to ${endDate}...`);
+    // Simulate API call delay - longer for download
+    await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
+    
+    // Mock implementation - randomly succeed/fail
+    // In a real implementation, this would call the backend API to download data
+    const isSuccessful = Math.random() > 0.2; // 80% success rate
+    console.log(`Tick data download for ${symbol} (${timeframe}) ${isSuccessful ? 'succeeded' : 'failed'}`);
+    return isSuccessful;
 }
 
 /**

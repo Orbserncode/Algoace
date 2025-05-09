@@ -2,14 +2,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlmodel import Session
 from typing import List, Any, Dict
-from pydantic import ValidationError as PydanticValidationError, BaseModel
+from pydantic import ValidationError as PydanticValidationError, BaseModel, Field
 
-from backend import crud, schemas, models
-from backend.database import get_session
-# Import both implementations to support gradual migration
-from backend.ai_agents.base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput
-from backend.ai_agents.base_agent_simplified import SimplifiedAgent
-from backend.ai_agents.strategy_coding_agent import GenerateStrategyInput # Specific input
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import crud
+from backend.models import AgentTypeEnum, AgentStatusEnum
+from backend.schemas import (
+    AgentRead, AgentCreate, AgentUpdate, BaseAgentConfig, parse_agent_config,
+    AgentConfigUnion, AgentStatusEnumSchema, AgentStatusUpdate
+)
+from database import get_session
+# Import implementations
+from ai_agents.base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput
+from ai_agents.strategy_coding_agent import GenerateStrategyInput # Specific input
 
 router = APIRouter(
     prefix="/agents",
@@ -17,30 +24,30 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.post("/", response_model=schemas.AgentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
 def create_new_agent(
     *,
     session: Session = Depends(get_session),
-    agent_in: schemas.AgentCreate,
+    agent_in: AgentCreate,
 ):
     try:
         # CRUD should handle config parsing during creation if agent_in.config is a dict
         agent = crud.create_agent(session=session, agent_in=agent_in)
         
         # crud.create_agent returns a models.Agent instance.
-        # For the response, we need schemas.AgentRead which expects a parsed config.
+        # For the response, we need AgentRead which expects a parsed config.
         # The agent.config from DB is likely a dict.
-        parsed_config_for_response = schemas.BaseAgentConfig() # Default
+        parsed_config_for_response = BaseAgentConfig() # Default
         if agent.config: # agent.config is Dict[str, Any] from models.Agent
             try:
-                parsed_config_for_response = schemas.parse_agent_config(agent.type.value, agent.config)
+                parsed_config_for_response = parse_agent_config(agent.type.value, agent.config)
             except PydanticValidationError as e_parse:
                 # Log or handle parsing error for response, but agent is already created
                 print(f"Warning: Config parsing failed for response model of new agent {agent.name}: {e_parse}")
         
         agent_dict = agent.model_dump(exclude={'config'})
         agent_dict['type'] = agent.type.value # Ensure enum value for response
-        return schemas.AgentRead(**agent_dict, config=parsed_config_for_response)
+        return AgentRead(**agent_dict, config=parsed_config_for_response)
 
     except ValueError as e: # Catches errors from crud.create_agent (e.g., config validation)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
@@ -50,7 +57,7 @@ def create_new_agent(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.get("/", response_model=List[schemas.AgentRead])
+@router.get("/", response_model=List[AgentRead])
 def read_all_agents(
     skip: int = 0,
     limit: int = 100,
@@ -59,21 +66,21 @@ def read_all_agents(
     db_agents = crud.get_agents(session=session, skip=skip, limit=limit)
     agents_out = []
     for agent_model in db_agents: # agent_model is models.Agent
-        parsed_config = schemas.BaseAgentConfig() # Default
+        parsed_config = BaseAgentConfig() # Default
         if agent_model.config: # This is a dict from DB
             try:
-                parsed_config = schemas.parse_agent_config(agent_model.type.value, agent_model.config)
+                parsed_config = parse_agent_config(agent_model.type.value, agent_model.config)
             except PydanticValidationError:
                  # Fallback, log error
                 print(f"Warning: Config parsing failed for agent {agent_model.name} in list view.")
         
         agent_dict = agent_model.model_dump(exclude={'config'})
         agent_dict['type'] = agent_model.type.value
-        agents_out.append(schemas.AgentRead(**agent_dict, config=parsed_config))
+        agents_out.append(AgentRead(**agent_dict, config=parsed_config))
     return agents_out
 
 
-@router.get("/{agent_id}", response_model=schemas.AgentRead)
+@router.get("/{agent_id}", response_model=AgentRead)
 def read_single_agent(
     *,
     session: Session = Depends(get_session),
@@ -83,24 +90,24 @@ def read_single_agent(
     if not agent_model:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
     
-    parsed_config = schemas.BaseAgentConfig()
+    parsed_config = BaseAgentConfig()
     if agent_model.config:
         try:
-            parsed_config = schemas.parse_agent_config(agent_model.type.value, agent_model.config)
+            parsed_config = parse_agent_config(agent_model.type.value, agent_model.config)
         except PydanticValidationError:
             print(f"Warning: Config parsing failed for agent {agent_model.name} in single view.")
 
     agent_dict = agent_model.model_dump(exclude={'config'})
     agent_dict['type'] = agent_model.type.value
-    return schemas.AgentRead(**agent_dict, config=parsed_config)
+    return AgentRead(**agent_dict, config=parsed_config)
 
 
-@router.patch("/{agent_id}", response_model=schemas.AgentRead)
+@router.patch("/{agent_id}", response_model=AgentRead)
 def update_existing_agent(
     *,
     session: Session = Depends(get_session),
     agent_id: int,
-    agent_in: schemas.AgentUpdate, # agent_in.config is Optional[Dict[str, Any]]
+    agent_in: AgentUpdate, # agent_in.config is Optional[Dict[str, Any]]
 ):
     try:
         # crud.update_agent will handle parsing/validation of agent_in.config if provided
@@ -111,16 +118,16 @@ def update_existing_agent(
     if not updated_agent_model:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
     
-    parsed_config_for_response = schemas.BaseAgentConfig()
+    parsed_config_for_response = BaseAgentConfig()
     if updated_agent_model.config: # This is a dict from DB after update
         try:
-            parsed_config_for_response = schemas.parse_agent_config(updated_agent_model.type.value, updated_agent_model.config)
+            parsed_config_for_response = parse_agent_config(updated_agent_model.type.value, updated_agent_model.config)
         except PydanticValidationError:
              print(f"Warning: Config parsing failed for response model of updated agent {updated_agent_model.name}.")
     
     agent_dict = updated_agent_model.model_dump(exclude={'config'})
     agent_dict['type'] = updated_agent_model.type.value
-    return schemas.AgentRead(**agent_dict, config=parsed_config_for_response)
+    return AgentRead(**agent_dict, config=parsed_config_for_response)
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -162,7 +169,7 @@ async def run_generate_strategy_task(
             # Fall back to PydanticAIAgent if simplified version fails
             agent_instance = PydanticAIAgent.get_agent_instance(agent_id=agent_id, session=session)
         
-        if agent_instance.agent_model.type != models.AgentTypeEnum.STRATEGY_CODING:
+        if agent_instance.agent_model.type != AgentTypeEnum.STRATEGY_CODING:
              raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agent is not a Strategy Coding Agent or type mismatch.")
         
         # agent_instance is now the specific agent type, e.g., StrategyCodingAIAgent
@@ -222,10 +229,10 @@ async def run_generic_agent_task( # Renamed to avoid conflict
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.post("/{agent_id}/set-status", response_model=schemas.AgentRead)
+@router.post("/{agent_id}/set-status", response_model=AgentRead)
 def set_agent_status_endpoint(
     agent_id: int,
-    status_in: schemas.AgentStatusUpdate,
+    status_in: AgentStatusUpdate,
     session: Session = Depends(get_session)
 ):
     db_agent_model = crud.get_agent(session=session, agent_id=agent_id)
@@ -233,7 +240,7 @@ def set_agent_status_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
 
     try:
-        new_status_enum = models.AgentStatusEnum(status_in.status.value) # status_in.status is AgentStatusEnumSchema
+        new_status_enum = AgentStatusEnum(status_in.status.value) # status_in.status is AgentStatusEnumSchema
     except ValueError:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid status value provided.")
 
@@ -242,13 +249,13 @@ def set_agent_status_endpoint(
     session.commit()
     session.refresh(db_agent_model)
     
-    parsed_config_for_response = schemas.BaseAgentConfig()
+    parsed_config_for_response = BaseAgentConfig()
     if db_agent_model.config:
         try:
-            parsed_config_for_response = schemas.parse_agent_config(db_agent_model.type.value, db_agent_model.config)
+            parsed_config_for_response = parse_agent_config(db_agent_model.type.value, db_agent_model.config)
         except PydanticValidationError:
             print(f"Warning: Config parsing failed for response after status update for agent {db_agent_model.name}.")
 
     agent_dict = db_agent_model.model_dump(exclude={'config'})
     agent_dict['type'] = db_agent_model.type.value
-    return schemas.AgentRead(**agent_dict, config=parsed_config_for_response)
+    return AgentRead(**agent_dict, config=parsed_config_for_response)

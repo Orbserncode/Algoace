@@ -4,9 +4,14 @@ from typing import Dict, Any, Optional, List
 from sqlmodel import Session
 import json # For formatting JSON in prompts if needed
 
-from .base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput
-from backend import schemas, models, crud
-
+from .base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput # Import base agent components
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import crud
+from backend.models import StrategyCreate, Agent
+from backend.schemas import StrategyCodingAgentConfig, parse_agent_config
+ 
 class GenerateStrategyInput(AgentTaskInput):
     market_conditions: str = Field(description="Current market conditions (e.g., bullish, bearish, volatile).")
     # risk_tolerance field in the frontend AgentConfigurationDialog uses a string enum from schema
@@ -33,18 +38,18 @@ class GenerateStrategyOutput(AgentTaskOutput):
 class StrategyCodingAIAgent(PydanticAIAgent[GenerateStrategyInput, GenerateStrategyOutput]):
     input_schema = GenerateStrategyInput
     output_schema = GenerateStrategyOutput # The direct LLM output might be GeneratedStrategyCode
-
-    def __init__(self, agent_model: models.Agent, session: Session):
+ 
+    def __init__(self, agent_model: Agent, session: Session):
         super().__init__(agent_model, session)
-        if not isinstance(self.config, schemas.StrategyCodingAgentConfig):
-            # This check might be redundant if the factory/API layer ensures correct config parsing.
-            # However, it's a good safeguard.
-            try:
-                self.config = schemas.StrategyCodingAgentConfig(
-                    **agent_model.config if isinstance(agent_model.config, dict) else dict(agent_model.config)
-                )
-            except Exception as e:
-                 raise ValueError(f"Invalid configuration type for StrategyCodingAIAgent. Expected StrategyCodingAgentConfig, got {type(agent_model.config)}. Error: {e}")
+        if not isinstance(self.config, StrategyCodingAgentConfig):
+           # This check might be redundant if the factory/API layer ensures correct config parsing.
+           # However, it's a good safeguard.
+           try:
+               self.config = StrategyCodingAgentConfig(
+                   **agent_model.config if isinstance(agent_model.config, dict) else dict(agent_model.config)
+               )
+           except Exception as e:
+                raise ValueError(f"Invalid configuration type for StrategyCodingAIAgent. Expected StrategyCodingAgentConfig, got {type(agent_model.config)}. Error: {e}")
 
         self.log_message("StrategyCodingAIAgent (pydantic-ai) initialized.")
 

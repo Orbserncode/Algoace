@@ -2,7 +2,8 @@
 
 /**
  * @fileOverview Service functions for fetching agent data.
- * Replace mock implementations with actual data fetching logic (e.g., from a database or API).
+ * This service connects to the backend API to fetch and manage agents.
+ * The backend is built with FastAPI and uses SQLModel to interact with a SQLite database.
  */
 
 import { z } from 'zod';
@@ -28,284 +29,525 @@ export const BaseAgentConfigSchema = z.object({
   enabledTools: z.array(z.custom<ToolName>((val) => availableTools.some(tool => tool.name === val)))
     .optional()
     .default([])
-    .describe("List of tools this agent is permitted to use."),
+    .describe("Tools this agent can use."),
+  llmModelProviderId: z.string().default('groq').describe("LLM provider ID (e.g., 'openai', 'anthropic', 'groq')"),
+  llmModelName: z.string().optional().describe("Specific model name (e.g., 'gpt-4', 'claude-3-opus')"),
 });
+export type BaseAgentConfig = z.infer<typeof BaseAgentConfigSchema>;
 
+// Strategy Coding Agent Config
 export const StrategyCodingAgentConfigSchema = BaseAgentConfigSchema.extend({
-  llmModelProviderId: z.string().optional().describe("ID of the configured LLM provider to use."),
-  llmModelName: z.string().optional().describe("Specific model name from the selected provider (e.g., gemini-2.0-flash, gpt-4-turbo)."),
-  backtestEngine: z.enum(['lumibot', 'vectorbt', 'internal_mock']).default('lumibot').describe("Engine to use for backtesting generated strategies."),
-  generationPrompt: z.string().min(50).default(
-    `You are an expert quantitative trading strategy developer specializing in Python and the Lumibot framework.
-Generate a new trading strategy based on the provided market conditions, risk tolerance, and historical data context.
-The strategy should be encapsulated in a Python class inheriting from lumibot.strategies.Strategy.
-Include clear comments explaining the logic, parameters, entry/exit conditions, and risk management.
-Optimize for the specified risk tolerance: {riskTolerance}.
-Current Market Conditions: {marketConditions}.
-Historical Context: {historicalData}`
-  ).describe("System prompt for the strategy generation LLM. Use placeholders like {riskTolerance}, {marketConditions}, {historicalData}."),
-  codingRetryAttempts: z.number().int().min(0).max(5).default(2).describe("Number of attempts to generate and debug code if errors occur."),
+  strategyFramework: z.string().default('lumibot').describe("Framework to use for strategy code generation"),
+  defaultTimeframe: z.string().default('1D').describe("Default trading timeframe"),
+  defaultAssetClass: z.string().default('stock').describe("Default asset class"),
+  codingPrompt: z.string().optional().describe("Custom prompt for strategy generation"),
 });
 export type StrategyCodingAgentConfig = z.infer<typeof StrategyCodingAgentConfigSchema>;
 
+// Execution Agent Config
 export const ExecutionAgentConfigSchema = BaseAgentConfigSchema.extend({
-  brokerConfigId: z.string().min(1, "A configured broker is required.").describe("ID of the configured broker to use for execution."),
-  llmModelProviderId: z.string().optional().describe("ID of the LLM provider for dynamic execution adjustments (optional)."),
-  llmModelName: z.string().optional().describe("Specific model name for execution adjustments (optional)."),
-  maxConcurrentTrades: z.number().int().min(1).max(20).default(5).describe("Maximum number of trades the agent can manage simultaneously."),
-  orderRetryAttempts: z.number().int().min(0).max(10).default(3).describe("Number of times to retry placing an order if it fails."),
-  executionLogicPrompt: z.string().optional().default(
-    `You are an AI assistant for an automated trading Execution Agent.
-Given the current market data, a proposed trade signal, and portfolio status, decide if the trade should proceed, be modified, or skipped.
-Consider factors like: extreme volatility, news events, current portfolio exposure, and confidence of the signal.
-Trade Signal: {tradeSignal}
-Market Context: {marketContext}
-Portfolio Status: {portfolioStatus}
-Your decision (Proceed/Modify/Skip) and reasoning:`
-  ).describe("Optional prompt for AI-assisted execution adjustments (e.g., dynamic order sizing, news impact). Use placeholders like {tradeSignal}, {marketContext}, {portfolioStatus}."),
-  requiresAllAgentConfirmation: z.boolean().default(true).describe("Requires explicit confirmation from relevant analysis/risk agents before executing a trade."),
+  brokerConfigId: z.string().describe("ID of the broker configuration to use"),
+  maxConcurrentTrades: z.number().default(5).describe("Maximum number of concurrent trades"),
+  orderRetryAttempts: z.number().default(3).describe("Number of retry attempts for failed orders"),
+  executionLogicPrompt: z.string().optional().describe("Custom prompt for execution logic"),
+  requiresAllAgentConfirmation: z.boolean().default(false).describe("Whether all agents must confirm trades"),
 });
 export type ExecutionAgentConfig = z.infer<typeof ExecutionAgentConfigSchema>;
 
+// Data Agent Config
 export const DataAgentConfigSchema = BaseAgentConfigSchema.extend({
-  dataProviderConfigId: z.string().optional().describe("ID of a specific data provider configuration (e.g., a specific broker or direct API)."),
-  fetchFrequencyMinutes: z.number().int().min(1).max(1440).default(15).describe("How often to fetch new market data, in minutes."),
   watchedAssets: z.array(z.object({
-      brokerId: z.string().min(1, "Broker ID is required for watched asset.").describe("ID of the broker providing this asset."),
-      symbol: z.string().min(1, "Symbol is required for watched asset.").describe("Asset symbol (e.g., AAPL, BTC/USD).")
-    }))
-    .min(1, "At least one asset must be watched.")
-    .default([{brokerId: "broker-alpaca-paper", symbol: "SPY"}]) // Provide a default valid asset
-    .describe("List of assets to monitor, potentially from multiple brokers."),
-  useSerpApiForNews: z.boolean().default(false).describe("Enable fetching news and sentiment via SerpAPI for watched assets."),
+    brokerId: z.string(),
+    symbol: z.string(),
+  })).min(1).describe("Assets to watch for data collection"),
+  dataCollectionFrequency: z.string().default('1h').describe("How often to collect data"),
 });
 export type DataAgentConfig = z.infer<typeof DataAgentConfigSchema>;
 
+// Analysis Agent Config
 export const AnalysisAgentConfigSchema = BaseAgentConfigSchema.extend({
-  llmModelProviderId: z.string().optional().describe("ID of the configured LLM provider to use."),
-  llmModelName: z.string().optional().describe("Specific model name from the selected provider."),
-  analysisPrompt: z.string().default(
-    `Analyze the portfolio's current performance, risk exposure, and recent trades.
-Identify potential issues like high drawdown, concentration risk, or strategy underperformance.
-Provide actionable insights and recommendations for adjustments.
-Portfolio Metrics: {metrics}
-Recent Trades: {trades}
-Market News/Sentiment: {marketNews}`
-  ).describe("Prompt for the analysis LLM. Use placeholders like {metrics}, {trades}, {marketNews}."),
-  analysisFrequencyHours: z.number().int().min(1).max(24).default(4).describe("How often to perform and report analysis, in hours."),
+  analysisFrequency: z.string().default('1d').describe("How often to run analysis"),
+  analysisPrompt: z.string().optional().describe("Custom prompt for analysis"),
 });
 export type AnalysisAgentConfig = z.infer<typeof AnalysisAgentConfigSchema>;
 
-// Union type for agent configs
-export type AgentConfig = StrategyCodingAgentConfig | ExecutionAgentConfig | DataAgentConfig | AnalysisAgentConfig;
+// Union type for all agent configs
+export type AgentConfig = BaseAgentConfig | StrategyCodingAgentConfig | ExecutionAgentConfig | DataAgentConfig | AnalysisAgentConfig;
 
-
-// --- Agent Type ---
+// Agent interface
 export interface Agent {
   id: string;
   name: string;
-  type: 'Strategy Coding Agent' | 'Execution Agent' | 'Data Agent' | 'Analysis Agent';
-  status: 'Running' | 'Idle' | 'Error' | 'Stopped';
+  type: 'Strategy Coding Agent' | 'Research & News Agent' | 'Portfolio Analyst Agent' | 'Risk Manager Agent' | 'Execution Agent' | 'Data Agent' | 'Analysis Agent';
+  status: 'Idle' | 'Running' | 'Stopped' | 'Error';
   description: string;
   tasksCompleted: number;
   errors: number;
   isDefault: boolean;
-  config?: AgentConfig;
   associatedStrategyIds?: string[];
 }
 
-// --- Mock Data ---
-const mockAgents: Agent[] = [
-  {
-    id: 'agent-gen-default', name: 'Strategy Generator', type: 'Strategy Coding Agent', status: 'Running', description: 'Automatically codes, debugs, and backtests new strategies.', tasksCompleted: 15, errors: 1, isDefault: true,
-    // config: StrategyCodingAgentConfigSchema.parse({ llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['Backtester', 'TechnicalIndicatorCalculator'] }),
-  },
-  {
-    id: 'agent-exec-momentum', name: 'Momentum Executor', type: 'Execution Agent', status: 'Running', description: 'Executes trades for momentum strategies.', tasksCompleted: 128, errors: 0, isDefault: false, associatedStrategyIds: ['strat-001'],
-    // config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', enabledTools: ['OrderExecutor', 'PortfolioManager'], requiresAllAgentConfirmation: true }),
-  },
-  {
-    id: 'agent-data-main', name: 'Market Scanner', type: 'Data Agent', status: 'Running', description: 'Monitors market data for signals & news.', tasksCompleted: 1532, errors: 3, isDefault: true,
-    // config: DataAgentConfigSchema.parse({ dataProviderConfigId: 'broker-alpaca-paper', watchedAssets: [{brokerId: 'broker-alpaca-paper', symbol: 'AAPL'}, {brokerId: 'broker-alpaca-paper', symbol: 'MSFT'}], useSerpApiForNews: true, enabledTools: ['MarketDataFetcher', 'WebSearcher']}),
-  },
-  {
-    id: 'agent-exec-ai', name: 'AI Trend Executor', type: 'Execution Agent', status: 'Idle', description: 'Executes trades for AI-driven trend strategies.', tasksCompleted: 95, errors: 0, isDefault: false, associatedStrategyIds: ['strat-003'],
-    // config: ExecutionAgentConfigSchema.parse({ brokerConfigId: 'broker-alpaca-paper', llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', maxConcurrentTrades: 3, orderRetryAttempts: 5, requiresAllAgentConfirmation: false, enabledTools: ['OrderExecutor', 'PortfolioManager'] }),
-  },
-  {
-    id: 'agent-risk-default', name: 'Portfolio Analyst', type: 'Analysis Agent', status: 'Running', description: 'Monitors overall portfolio risk and performance.', tasksCompleted: 45, errors: 0, isDefault: true,
-    // config: AnalysisAgentConfigSchema.parse({llmModelProviderId: 'llm-google-default', llmModelName: 'gemini-2.0-flash', enabledTools: ['PortfolioManager', 'TechnicalIndicatorCalculator', 'MarketDataFetcher']}),
-  },
-];
+// Agent with config
+export interface AgentWithConfig extends Agent {
+  config: AgentConfig;
+}
 
-// Update mockAgentConfigs to use the new schemas
-let mockAgentConfigs: Record<string, AgentConfig> = {
-    'agent-gen-default': StrategyCodingAgentConfigSchema.parse({ 
-        llmModelProviderId: 'llm-google-default', 
-        llmModelName: 'gemini-2.0-flash', 
-        enabledTools: ['Backtester', 'TechnicalIndicatorCalculator'],
-        // generationPrompt: StrategyCodingAgentConfigSchema.shape.generationPrompt.default(undefined) // Let Zod handle default
-    }),
-    'agent-exec-momentum': ExecutionAgentConfigSchema.parse({ 
-        brokerConfigId: 'broker-alpaca-paper', 
-        enabledTools: ['OrderExecutor', 'PortfolioManager'],
-        // executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined), // Let Zod handle default
-        requiresAllAgentConfirmation: true
-    }),
-    'agent-data-main': DataAgentConfigSchema.parse({ 
-        dataProviderConfigId: 'broker-alpaca-paper', 
-        watchedAssets: [{brokerId: 'broker-alpaca-paper', symbol: 'AAPL'}, {brokerId: 'broker-alpaca-paper', symbol: 'MSFT'}, {brokerId: 'broker-alpaca-paper', symbol: 'GOOGL'}], 
-        useSerpApiForNews: true, 
-        fetchFrequencyMinutes: 5, 
-        enabledTools: ['MarketDataFetcher', 'WebSearcher']
-    }),
-    'agent-exec-ai': ExecutionAgentConfigSchema.parse({ 
-        brokerConfigId: 'broker-alpaca-paper', 
-        llmModelProviderId: 'llm-google-default', 
-        llmModelName: 'gemini-2.0-flash', 
-        maxConcurrentTrades: 3, 
-        orderRetryAttempts: 5, 
-        enabledTools: ['OrderExecutor', 'PortfolioManager'],
-        // executionLogicPrompt: ExecutionAgentConfigSchema.shape.executionLogicPrompt.default(undefined), // Let Zod handle default
-        requiresAllAgentConfirmation: false,
-    }),
-    'agent-risk-default': AnalysisAgentConfigSchema.parse({
-        llmModelProviderId: 'llm-google-default', 
-        llmModelName: 'gemini-2.0-flash', 
-        enabledTools: ['PortfolioManager', 'TechnicalIndicatorCalculator', 'MarketDataFetcher'],
-        // analysisPrompt: AnalysisAgentConfigSchema.shape.analysisPrompt.default(undefined), // Let Zod handle default
-    }),
-};
+// API base URL - use /api prefix to rely on Next.js rewrites
+const API_BASE_URL = '/api';
 
+// Helper function to handle errors
+function handleError(error: any): never {
+  console.error('API Error:', error);
+  throw error;
+}
 
-// --- Service Functions ---
+// Helper function to convert backend agent format to frontend format
+function convertBackendAgent(backendAgent: any): Agent {
+  return {
+    id: `agent-${backendAgent.id}`, // Convert numeric ID to string format with prefix
+    name: backendAgent.name,
+    type: backendAgent.type,
+    status: backendAgent.status,
+    description: backendAgent.description,
+    tasksCompleted: backendAgent.tasksCompleted,
+    errors: backendAgent.errors,
+    isDefault: backendAgent.isDefault,
+    associatedStrategyIds: backendAgent.associatedStrategyIds
+  };
+}
 
+// Helper function to convert frontend agent format to backend format
+function convertFrontendAgent(frontendAgent: Partial<Agent>): any {
+  const backendAgent: Record<string, any> = {
+    name: frontendAgent.name,
+    type: frontendAgent.type,
+    status: frontendAgent.status,
+    description: frontendAgent.description,
+    tasksCompleted: frontendAgent.tasksCompleted,
+    errors: frontendAgent.errors,
+    isDefault: frontendAgent.isDefault,
+    associatedStrategyIds: frontendAgent.associatedStrategyIds
+  };
+
+  // If ID is provided, extract the numeric part
+  if (frontendAgent.id) {
+    const idMatch = frontendAgent.id.match(/agent-(\d+)/);
+    if (idMatch && idMatch[1]) {
+      backendAgent.id = parseInt(idMatch[1], 10);
+    }
+  }
+
+  return backendAgent;
+}
+
+// Simulate potential API/DB errors
+const simulateError = (probability = 0.01) => { // Reduced error probability
+    if (Math.random() < probability) {
+        throw new Error("Simulated service error.");
+    }
+}
+
+/**
+ * Fetches all agents from the backend.
+ * @returns A promise that resolves to an array of Agent objects.
+ */
 export async function getAgents(): Promise<Agent[]> {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const agentsWithConfig = mockAgents.map(agent => ({
-       ...agent,
-       config: mockAgentConfigs[agent.id] || undefined
-   }));
-  return agentsWithConfig;
+  console.log("Fetching agents...");
+  
+  try {
+    // Fetch agents from the file-based API endpoint
+    const response = await fetch(`${API_BASE_URL}/file-agents`);
+    
+    if (!response.ok) {
+      throw new Error(`Error fetching agents: ${response.statusText}`);
+    }
+    
+    const backendAgents = await response.json();
+    
+    // Convert backend format to frontend format
+    const agents = backendAgents.map((backendAgent: any) => {
+      return {
+        id: backendAgent.id, // Already in the right format
+        name: backendAgent.name,
+        type: backendAgent.type,
+        status: backendAgent.status,
+        description: backendAgent.description,
+        tasksCompleted: backendAgent.tasksCompleted,
+        errors: backendAgent.errors,
+        isDefault: backendAgent.isDefault,
+        associatedStrategyIds: backendAgent.associatedStrategyIds
+      };
+    });
+    
+    console.log("Fetched agents:", agents.length);
+    return agents;
+  } catch (error) {
+    console.error("Failed to fetch agents:", error);
+    // Throw the error instead of returning an empty array
+    // This allows the frontend to catch it and display an error message
+    throw error;
+  }
 }
 
+/**
+ * Fetches a single agent by ID.
+ * @param agentId The ID of the agent to fetch.
+ * @returns A promise that resolves to the Agent object or null if not found.
+ */
 export async function getAgentById(agentId: string): Promise<Agent | null> {
-    await new Promise(resolve => setTimeout(resolve, 200));
-    const agent = mockAgents.find(a => a.id === agentId);
-    if (!agent) return null;
-     const agentWithConfig = {
-         ...agent,
-         config: mockAgentConfigs[agent.id] || undefined
-     };
-    return agentWithConfig;
-}
-
-export async function getAgentConfig(agentId: string): Promise<AgentConfig | null> {
-    await new Promise(resolve => setTimeout(resolve, 150));
-    const agent = mockAgents.find(a => a.id === agentId);
-    if (!agent) return null;
-    // Ensure a default config is created if one doesn't exist
-    if (!mockAgentConfigs[agentId]) {
-        let defaultConfig: AgentConfig;
-        switch (agent.type) {
-            case 'Strategy Coding Agent': defaultConfig = StrategyCodingAgentConfigSchema.parse({}); break;
-            case 'Execution Agent': defaultConfig = ExecutionAgentConfigSchema.parse({brokerConfigId: ""}); break; // Provide minimal valid
-            case 'Data Agent': defaultConfig = DataAgentConfigSchema.parse({watchedAssets: [{brokerId: "default-broker", symbol: "DEFAULT"}] }); break; // Provide minimal valid
-            case 'Analysis Agent': defaultConfig = AnalysisAgentConfigSchema.parse({}); break;
-            default: defaultConfig = BaseAgentConfigSchema.parse({});
-        }
-        mockAgentConfigs[agentId] = defaultConfig;
-    }
-    return mockAgentConfigs[agentId];
-}
-
-export async function updateAgentConfig(agentId: string, config: AgentConfig): Promise<AgentConfig | null> {
-    await new Promise(resolve => setTimeout(resolve, 300));
-     const agent = mockAgents.find(a => a.id === agentId);
-     if (!agent) {
-        console.warn(`Agent ${agentId} not found for config update.`);
+  console.log(`Fetching agent by ID: ${agentId}`);
+  
+  try {
+    // Fetch agent from the file-based API
+    const response = await fetch(`${API_BASE_URL}/file-agents/${agentId}`);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`Agent ${agentId} not found.`);
         return null;
-     }
-
-    // Basic validation: Ensure the config type matches the agent type (simplified)
-    let validationResult;
-    switch (agent.type) {
-        case 'Strategy Coding Agent': validationResult = StrategyCodingAgentConfigSchema.safeParse(config); break;
-        case 'Execution Agent': validationResult = ExecutionAgentConfigSchema.safeParse(config); break;
-        case 'Data Agent': validationResult = DataAgentConfigSchema.safeParse(config); break;
-        case 'Analysis Agent': validationResult = AnalysisAgentConfigSchema.safeParse(config); break;
-        default: validationResult = BaseAgentConfigSchema.safeParse(config); // Fallback for safety
+      }
+      throw new Error(`Error fetching agent: ${response.statusText}`);
     }
-
-    if (!validationResult.success) {
-        console.error(`Config for agent ${agentId} (type: ${agent.type}) is invalid:`, config, validationResult.error.flatten());
-        // In a real app, throw a more specific error or return detailed validation errors
-        throw new Error(`Configuration data is invalid for the agent type: ${validationResult.error.flatten().formErrors.join(', ')}`);
-    }
-
-    console.log(`SERVICE: Updating config for agent ${agentId}`, validationResult.data);
-    mockAgentConfigs[agentId] = validationResult.data; // Store the validated and potentially transformed data
-    return validationResult.data;
-}
-
-
-export async function activateAgent(agentId: string): Promise<Agent | null> {
-     console.log(`SERVICE: Activating agent ${agentId}`);
-     await new Promise(resolve => setTimeout(resolve, 400));
-     const index = mockAgents.findIndex(a => a.id === agentId);
-     if (index === -1) return null;
-     const newStatus = (mockAgents[index].type === 'Execution Agent' || mockAgents[index].type === 'Strategy Coding Agent')
-         ? 'Idle'
-         : 'Running';
-     mockAgents[index].status = newStatus;
-     return { ...mockAgents[index], config: mockAgentConfigs[agentId] };
-}
-
-export async function deactivateAgent(agentId: string): Promise<Agent | null> {
-     console.log(`SERVICE: Deactivating agent ${agentId}`);
-     await new Promise(resolve => setTimeout(resolve, 400));
-     const index = mockAgents.findIndex(a => a.id === agentId);
-     if (index === -1) return null;
-     mockAgents[index].status = 'Stopped';
-     return { ...mockAgents[index], config: mockAgentConfigs[agentId] };
-}
-
-export async function addAgent(agentData: Omit<Agent, 'id' | 'tasksCompleted' | 'errors'>): Promise<Agent> {
-    console.log(`SERVICE: Adding new agent ${agentData.name}`);
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const newId = `agent-${agentData.type.split(' ')[0].toLowerCase()}-${Date.now().toString().slice(-4)}`;
-    const newAgent: Agent = {
-        ...agentData,
-        id: newId,
-        tasksCompleted: 0,
-        errors: 0,
-        status: 'Stopped',
-        isDefault: false,
+    
+    const backendAgent = await response.json();
+    
+    // Convert backend format to frontend format
+    const agent: Agent = {
+      id: backendAgent.id,
+      name: backendAgent.name,
+      type: backendAgent.type,
+      status: backendAgent.status,
+      description: backendAgent.description,
+      tasksCompleted: backendAgent.tasksCompleted,
+      errors: backendAgent.errors,
+      isDefault: backendAgent.isDefault,
+      associatedStrategyIds: backendAgent.associatedStrategyIds
     };
-    mockAgents.push(newAgent);
-    let defaultConfig: AgentConfig;
-     switch (newAgent.type) {
-        case 'Strategy Coding Agent': defaultConfig = StrategyCodingAgentConfigSchema.parse({}); break;
-        case 'Execution Agent': defaultConfig = ExecutionAgentConfigSchema.parse({ brokerConfigId: "" }); break;
-        case 'Data Agent': defaultConfig = DataAgentConfigSchema.parse({ watchedAssets: [{brokerId: "default-broker", symbol: "DEFAULT"}] }); break;
-        case 'Analysis Agent': defaultConfig = AnalysisAgentConfigSchema.parse({}); break;
-        default: defaultConfig = BaseAgentConfigSchema.parse({});
-     }
-     mockAgentConfigs[newId] = defaultConfig;
-    console.log(`SERVICE: Added agent ${newId}`);
-    return newAgent;
+    
+    console.log(`Found agent: ${agent.name}`);
+    return agent;
+  } catch (error) {
+    console.error(`Failed to fetch agent ${agentId}:`, error);
+    return null;
+  }
 }
 
+/**
+ * Fetches an agent with its configuration.
+ * @param agentId The ID of the agent to fetch.
+ * @returns A promise that resolves to the AgentWithConfig object or null if not found.
+ */
+export async function getAgentWithConfig(agentId: string): Promise<AgentWithConfig | null> {
+  console.log(`Fetching agent with config by ID: ${agentId}`);
+  
+  try {
+    // First, get the agent
+    const agent = await getAgentById(agentId);
+    if (!agent) {
+      return null;
+    }
+    
+    // Then, get the agent's config
+    const config = await getAgentConfig(agentId);
+    if (!config) {
+      return null;
+    }
+    
+    // Combine the agent and config
+    const agentWithConfig: AgentWithConfig = {
+      ...agent,
+      config
+    };
+    
+    return agentWithConfig;
+  } catch (error) {
+    console.error(`Failed to fetch agent with config ${agentId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetches the configuration for an agent.
+ * @param agentId The ID of the agent.
+ * @returns A promise that resolves to the AgentConfig object or null if not found.
+ */
+export async function getAgentConfig(agentId: string): Promise<AgentConfig | null> {
+  console.log(`Fetching config for agent ID: ${agentId}`);
+  
+  try {
+    // Fetch agent config from the file-based API
+    const response = await fetch(`${API_BASE_URL}/file-agents/${agentId}/config`);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`Config for agent ${agentId} not found.`);
+        return null;
+      }
+      throw new Error(`Error fetching agent config: ${response.statusText}`);
+    }
+    
+    const config = await response.json();
+    
+    return config;
+  } catch (error) {
+    console.error(`Failed to fetch config for agent ${agentId}:`, error);
+    
+    // Return a default config based on the agent type
+    const agent = await getAgentById(agentId);
+    if (!agent) {
+      return null;
+    }
+    
+    let defaultConfig: AgentConfig;
+    switch (agent.type) {
+      case 'Strategy Coding Agent':
+        defaultConfig = StrategyCodingAgentConfigSchema.parse({});
+        break;
+      case 'Execution Agent':
+        defaultConfig = ExecutionAgentConfigSchema.parse({brokerConfigId: ""});
+        break;
+      case 'Data Agent':
+        defaultConfig = DataAgentConfigSchema.parse({watchedAssets: [{brokerId: "default-broker", symbol: "DEFAULT"}]});
+        break;
+      case 'Analysis Agent':
+        defaultConfig = AnalysisAgentConfigSchema.parse({});
+        break;
+      default:
+        defaultConfig = BaseAgentConfigSchema.parse({});
+    }
+    
+    return defaultConfig;
+  }
+}
+
+/**
+ * Updates the configuration for an agent.
+ * @param agentId The ID of the agent.
+ * @param config The new configuration.
+ * @returns A promise that resolves to the updated AgentConfig object or null if not found.
+ */
+export async function updateAgentConfig(agentId: string, config: AgentConfig): Promise<AgentConfig | null> {
+  console.log(`Updating config for agent ID: ${agentId}`);
+  
+  try {
+    // Extract the numeric ID from the string ID
+    const idMatch = agentId.match(/agent-(\d+)/);
+    if (!idMatch || !idMatch[1]) {
+      console.error(`Invalid agent ID format: ${agentId}`);
+      return null;
+    }
+    
+    const numericId = idMatch[1];
+    
+    // Send the config to the API
+    const response = await fetch(`${API_BASE_URL}/agents/${numericId}/config`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(config)
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`Agent ${agentId} not found for config update.`);
+        return null;
+      }
+      throw new Error(`Error updating agent config: ${response.statusText}`);
+    }
+    
+    const updatedConfig = await response.json();
+    
+    return updatedConfig;
+  } catch (error) {
+    console.error(`Failed to update config for agent ${agentId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Creates a new agent.
+ * @param agent The agent to create.
+ * @param config The configuration for the agent.
+ * @returns A promise that resolves to the created AgentWithConfig object or null if creation failed.
+ */
+export async function createAgent(agent: Omit<Agent, 'id' | 'tasksCompleted' | 'errors'>, config: AgentConfig): Promise<AgentWithConfig | null> {
+  console.log(`Creating new agent: ${agent.name}`);
+  
+  try {
+    // Convert frontend format to backend format
+    const backendAgent = {
+      name: agent.name,
+      type: agent.type,
+      status: agent.status || 'Idle',
+      description: agent.description,
+      isDefault: agent.isDefault || false,
+      associatedStrategyIds: agent.associatedStrategyIds || [],
+      config
+    };
+    
+    // Send the agent to the API
+    const response = await fetch(`${API_BASE_URL}/agents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(backendAgent)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error creating agent: ${response.statusText}`);
+    }
+    
+    const createdAgent = await response.json();
+    
+    // Convert backend format to frontend format
+    const frontendAgent = convertBackendAgent(createdAgent);
+    
+    // Return the agent with config
+    const agentWithConfig: AgentWithConfig = {
+      ...frontendAgent,
+      config
+    };
+    
+    console.log(`Created new agent: ${agentWithConfig.id} - ${agentWithConfig.name}`);
+    return agentWithConfig;
+  } catch (error) {
+    console.error(`Failed to create agent:`, error);
+    return null;
+  }
+}
+
+/**
+ * Updates an existing agent.
+ * @param agentId The ID of the agent to update.
+ * @param updates The updates to apply to the agent.
+ * @returns A promise that resolves to the updated Agent object or null if not found.
+ */
+export async function updateAgent(agentId: string, updates: Partial<Omit<Agent, 'id'>>): Promise<Agent | null> {
+  console.log(`Updating agent ${agentId} with:`, updates);
+  
+  try {
+    // Extract the numeric ID from the string ID
+    const idMatch = agentId.match(/agent-(\d+)/);
+    if (!idMatch || !idMatch[1]) {
+      console.error(`Invalid agent ID format: ${agentId}`);
+      return null;
+    }
+    
+    const numericId = idMatch[1];
+    
+    // Convert frontend format to backend format
+    const backendUpdates = convertFrontendAgent(updates);
+    
+    // Remove undefined values
+    Object.keys(backendUpdates).forEach(key => {
+      if (backendUpdates[key] === undefined) {
+        delete backendUpdates[key];
+      }
+    });
+    
+    // Send the updates to the API
+    const response = await fetch(`${API_BASE_URL}/agents/${numericId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(backendUpdates)
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`Agent ${agentId} not found for update.`);
+        return null;
+      }
+      throw new Error(`Error updating agent: ${response.statusText}`);
+    }
+    
+    const updatedAgent = await response.json();
+    
+    // Convert backend format to frontend format
+    const agent = convertBackendAgent(updatedAgent);
+    
+    console.log(`Updated agent ${agentId}:`, agent);
+    return agent;
+  } catch (error) {
+    console.error(`Failed to update agent ${agentId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Deletes an agent.
+ * @param agentId The ID of the agent to delete.
+ * @returns A promise that resolves to true if deleted, false otherwise.
+ */
 export async function deleteAgent(agentId: string): Promise<boolean> {
-     console.log(`SERVICE: Deleting agent ${agentId}`);
-     await new Promise(resolve => setTimeout(resolve, 300));
-     const index = mockAgents.findIndex(a => a.id === agentId);
-     if (index === -1 || mockAgents[index].isDefault) {
-         console.warn(`Agent ${agentId} not found or is a default agent.`);
-         return false;
-     }
-     mockAgents.splice(index, 1);
-     delete mockAgentConfigs[agentId];
-     console.log(`SERVICE: Deleted agent ${agentId}`);
-     return true;
+  console.log(`Deleting agent ${agentId}`);
+  
+  try {
+    // Extract the numeric ID from the string ID
+    const idMatch = agentId.match(/agent-(\d+)/);
+    if (!idMatch || !idMatch[1]) {
+      console.error(`Invalid agent ID format: ${agentId}`);
+      return false;
+    }
+    
+    const numericId = idMatch[1];
+    
+    // Send the delete request to the API
+    const response = await fetch(`${API_BASE_URL}/agents/${numericId}`, {
+      method: 'DELETE'
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`Agent ${agentId} not found for deletion.`);
+        return false;
+      }
+      throw new Error(`Error deleting agent: ${response.statusText}`);
+    }
+    
+    console.log(`Successfully deleted agent ${agentId}`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to delete agent ${agentId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Starts an agent.
+ * @param agentId The ID of the agent to start.
+ * @returns A promise that resolves to the updated Agent object or null if not found.
+ */
+export async function startAgent(agentId: string): Promise<Agent | null> {
+  console.log(`Starting agent ${agentId}`);
+  
+  // Update the agent's status to 'Running'
+  return updateAgent(agentId, { status: 'Running' });
+}
+
+/**
+ * Stops an agent.
+ * @param agentId The ID of the agent to stop.
+ * @returns A promise that resolves to the updated Agent object or null if not found.
+ */
+export async function stopAgent(agentId: string): Promise<Agent | null> {
+  console.log(`Stopping agent ${agentId}`);
+  
+  // Update the agent's status to 'Stopped'
+  return updateAgent(agentId, { status: 'Stopped' });
+}
+
+/**
+ * Resets an agent's error state.
+ * @param agentId The ID of the agent to reset.
+ * @returns A promise that resolves to the updated Agent object or null if not found.
+ */
+export async function resetAgentError(agentId: string): Promise<Agent | null> {
+  console.log(`Resetting error state for agent ${agentId}`);
+  
+  // Update the agent's status to 'Idle' and reset errors
+  return updateAgent(agentId, { status: 'Idle', errors: 0 });
 }

@@ -7,15 +7,20 @@ from typing import Optional, Dict, Any, Literal
 from pydantic_ai.llm import LLM
 from pydantic_ai.llm.openai import OpenAILLM
 from pydantic_ai.llm.groq import GroqLLM
+# Import the Google and Anthropic LLM clients
+from pydantic_ai.llm.google import GoogleLLM
+from pydantic_ai.llm.anthropic import AnthropicLLM
 import logfire
 
 # Define supported LLM providers
-LLMProviderType = Literal["openai", "groq", "local"]
+LLMProviderType = Literal["openai", "groq", "google", "anthropic", "local"]
 
 # Default models for each provider
 DEFAULT_MODELS = {
     "openai": "gpt-4o",
     "groq": "llama3-70b-8192",
+    "google": "gemini-1.5-pro",
+    "anthropic": "claude-3-opus-20240229",
     "local": "local-model"  # This would be replaced with actual local model name
 }
 
@@ -41,7 +46,7 @@ def get_llm_client(provider_id: Optional[str] = None, model_name: Optional[str] 
     provider_id = provider_id.lower()
     
     # Validate provider
-    if provider_id not in ["openai", "groq", "local"]:
+    if provider_id not in ["openai", "groq", "google", "anthropic", "local"]:
         raise ValueError(f"Unsupported LLM provider: {provider_id}")
     
     # Use default model if not specified
@@ -62,6 +67,18 @@ def get_llm_client(provider_id: Optional[str] = None, model_name: Optional[str] 
         if not api_key:
             raise ValueError("Groq API key not found in environment variables")
         return GroqLLM(model=model_name, api_key=api_key)
+    
+    elif provider_id == "google":
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("Google API key not found in environment variables")
+        return GoogleLLM(model=model_name, api_key=api_key)
+    
+    elif provider_id == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("Anthropic API key not found in environment variables")
+        return AnthropicLLM(model=model_name, api_key=api_key)
     
     elif provider_id == "local":
         # This would be implemented with a local model client
