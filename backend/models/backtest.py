@@ -16,3 +16,6 @@ class BacktestResult(SQLModel, table=True):
     
     # Add a field to store AI-generated analysis
     ai_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    
+    # Add a field to track if the backtest result is locked (protected from deletion)
+    locked: bool = Field(default=False)

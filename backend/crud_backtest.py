@@ -56,10 +56,16 @@ def get_latest_backtest_result(session: Session, strategy_id: str) -> Optional[B
 def delete_backtest_result(session: Session, backtest_id: int) -> bool:
     """
     Delete a backtest result by ID.
+    Returns False if the backtest result doesn't exist or is locked.
     """
     backtest_result = session.get(BacktestResult, backtest_id)
     if not backtest_result:
         return False
+    
+    # Check if the backtest is locked
+    if backtest_result.locked:
+        return False
+        
     session.delete(backtest_result)
     session.commit()
     return True
@@ -67,6 +73,7 @@ def delete_backtest_result(session: Session, backtest_id: int) -> bool:
 def delete_old_backtest_results(session: Session, strategy_id: str, keep_count: int = 5) -> int:
     """
     Delete old backtest results for a strategy, keeping only the most recent ones.
+    Skips locked backtest results.
     Returns the number of deleted results.
     """
     # Get all backtest results for the strategy
@@ -82,6 +89,10 @@ def delete_old_backtest_results(session: Session, strategy_id: str, keep_count: 
     deleted_count = 0
     
     for result in results_to_delete:
+        # Skip locked backtest results
+        if result.locked:
+            continue
+            
         session.delete(result)
         deleted_count += 1
     

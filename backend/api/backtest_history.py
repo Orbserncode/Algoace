@@ -57,7 +57,8 @@ async def list_backtest_results(
             "timestamp": result.timestamp.isoformat(),
             "parameters": result.parameters,
             "summary_metrics": result.summary_metrics,
-            "has_ai_analysis": result.ai_analysis is not None
+            "has_ai_analysis": result.ai_analysis is not None,
+            "locked": result.locked
         }
         for result in results
     ]
@@ -83,7 +84,8 @@ async def get_backtest_result_by_id(
         "equity_curve": result.equity_curve,
         "trades": result.trades,
         "log_output": result.log_output,
-        "ai_analysis": result.ai_analysis
+        "ai_analysis": result.ai_analysis,
+        "locked": result.locked
     }
 
 @router.delete("/{backtest_id}", response_model=dict)
@@ -93,10 +95,20 @@ async def delete_backtest_result_by_id(
 ):
     """
     Delete a specific backtest result by ID.
+    Returns 403 if the backtest is locked.
     """
+    # First check if the backtest exists and if it's locked
+    result = get_backtest_result(session, backtest_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Backtest result with ID {backtest_id} not found")
+    
+    if result.locked:
+        raise HTTPException(status_code=403, detail=f"Backtest result with ID {backtest_id} is locked and cannot be deleted")
+    
+    # Now delete the backtest
     success = delete_backtest_result(session, backtest_id)
     if not success:
-        raise HTTPException(status_code=404, detail=f"Backtest result with ID {backtest_id} not found")
+        raise HTTPException(status_code=500, detail=f"Failed to delete backtest result with ID {backtest_id}")
     
     return {"message": f"Backtest result with ID {backtest_id} deleted successfully"}
 
@@ -220,3 +232,35 @@ async def save_backtest_result(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save backtest result: {str(e)}")
+
+@router.post("/{backtest_id}/lock", response_model=dict)
+async def update_backtest_lock_status(
+    backtest_id: int,
+    lock_data: dict,
+    session: Session = Depends(get_session)
+):
+    """
+    Update the lock status of a backtest result.
+    """
+    try:
+        # Get the backtest result
+        result = get_backtest_result(session, backtest_id)
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Backtest result with ID {backtest_id} not found")
+        
+        # Update the lock status
+        locked = lock_data.get("locked", False)
+        
+        # Update the locked field in the database
+        result.locked = locked
+        session.add(result)
+        session.commit()
+        
+        return {
+            "id": result.id,
+            "strategy_id": result.strategy_id,
+            "timestamp": result.timestamp.isoformat(),
+            "locked": result.locked
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update lock status: {str(e)}")
