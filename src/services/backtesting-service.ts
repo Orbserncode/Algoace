@@ -154,7 +154,13 @@ export async function runBacktest(strategyId: string, parameters: {
  * @param jobId The ID of the backtest job.
  * @returns A promise resolving to the job status ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED').
  */
-export async function getBacktestJobStatus(jobId: string): Promise<JobStatus> {
+export async function getBacktestJobStatus(jobId: string): Promise<{
+    status: JobStatus;
+    message?: string;
+    progress?: number;
+    current_date?: string;
+    total_days?: number;
+}> {
     try {
         const response = await fetch(`${API_BASE_URL}/backtesting/jobs/${jobId}/status`);
         
@@ -163,7 +169,13 @@ export async function getBacktestJobStatus(jobId: string): Promise<JobStatus> {
         }
         
         const result = await response.json();
-        return result.status as JobStatus;
+        return {
+            status: result.status as JobStatus,
+            message: result.message,
+            progress: result.progress,
+            current_date: result.current_date,
+            total_days: result.total_days
+        };
     } catch (error) {
         console.error(`SERVICE: Error checking status for job ${jobId}:`, error);
         throw error;
@@ -182,7 +194,8 @@ export async function checkDatasetAvailability(symbol: string, timeframe: string
     count: number,
     start_date?: string,
     end_date?: string,
-    has_date_range: boolean
+    has_date_range: boolean,
+    data_points: number
 }> {
     console.log(`SERVICE: Checking dataset availability for ${symbol} (${timeframe})`);
     
@@ -202,14 +215,16 @@ export async function checkDatasetAvailability(symbol: string, timeframe: string
             count: result.count || 0,
             start_date: result.start_date,
             end_date: result.end_date,
-            has_date_range: result.has_date_range || false
+            has_date_range: result.has_date_range || false,
+            data_points: result.data_points || 0
         };
     } catch (error) {
         console.error(`SERVICE: Error checking dataset availability:`, error);
         return {
             available: false,
             count: 0,
-            has_date_range: false
+            has_date_range: false,
+            data_points: 0
         };
     }
 }
@@ -277,6 +292,7 @@ export interface BacktestHistoryItem {
   parameters: any;
   summary_metrics: any;
   has_ai_analysis: boolean;
+  locked: boolean;
 }
 
 /**

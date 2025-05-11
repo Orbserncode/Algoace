@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarIcon, Loader2, AlertTriangle, MessageSquareText, Download } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, AlertTriangle, MessageSquareText, Download, Save } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
@@ -156,15 +156,32 @@ export default function BacktestingPage() {
         loadInitialData();
     }, [toast]);
 
-     // Polling for job status (simple example)
+     // State for progress tracking
+     const [progress, setProgress] = useState<number>(0);
+     const [currentDate, setCurrentDate] = useState<string | null>(null);
+     const [totalDays, setTotalDays] = useState<number>(0);
+     
+     // Polling for job status with progress information
      useEffect(() => {
         let intervalId: NodeJS.Timeout | null = null;
         if (backtestState === BacktestState.RUNNING && jobId) {
             intervalId = setInterval(async () => {
                 try {
-                    const status = await getBacktestJobStatus(jobId);
-                    console.log(`Backtest job ${jobId} status: ${status}`);
-                    if (status === 'COMPLETED') {
+                    const statusInfo = await getBacktestJobStatus(jobId);
+                    console.log(`Backtest job ${jobId} status: ${statusInfo.status}, progress: ${statusInfo.progress}%`);
+                    
+                    // Update progress information
+                    if (statusInfo.progress !== undefined) {
+                        setProgress(statusInfo.progress);
+                    }
+                    if (statusInfo.current_date) {
+                        setCurrentDate(statusInfo.current_date);
+                    }
+                    if (statusInfo.total_days) {
+                        setTotalDays(statusInfo.total_days);
+                    }
+                    
+                    if (statusInfo.status === 'COMPLETED') {
                         setBacktestState(BacktestState.FETCHING);
                         clearInterval(intervalId!);
                         // Use strategy ID from form state when fetching results after completion
@@ -176,10 +193,14 @@ export default function BacktestingPage() {
                              setError("Could not fetch results: Strategy ID missing.");
                              setBacktestState(BacktestState.ERROR);
                         }
-                    } else if (status === 'FAILED') {
+                    } else if (statusInfo.status === 'FAILED') {
                         setBacktestState(BacktestState.ERROR);
-                        setError(`Backtest job ${jobId} failed.`);
-                        toast({ title: "Backtest Failed", description: `The backtest process encountered an error (Job ID: ${jobId}).`, variant: "destructive"});
+                        setError(statusInfo.message || `Backtest job ${jobId} failed.`);
+                        toast({
+                            title: "Backtest Failed",
+                            description: statusInfo.message || `The backtest process encountered an error (Job ID: ${jobId}).`,
+                            variant: "destructive"
+                        });
                         clearInterval(intervalId!);
                          // Fetch results even on failure, as they might contain error logs
                          const currentStrategyId = form.getValues("strategyId");
@@ -194,7 +215,7 @@ export default function BacktestingPage() {
                     setBacktestState(BacktestState.ERROR);
                     clearInterval(intervalId!);
                 }
-            }, 5000); // Poll every 5 seconds
+            }, 2000); // Poll every 2 seconds for more responsive progress updates
         }
 
         // Cleanup interval on component unmount or state change
@@ -255,6 +276,22 @@ export default function BacktestingPage() {
                 setDatasetInfo(availability);
                 console.log(`Tick data for ${selectedAsset} (${selectedTimeframe}) is ${availability.available ? 'available' : 'not available'}`);
                 
+                // Show a toast notification with dataset information
+                if (availability.available) {
+                    const dataPoints = availability.data_points || 0;
+                    toast({
+                        title: "Dataset Available",
+                        description: `Found ${dataPoints} data points for ${selectedAsset} (${selectedTimeframe})${availability.has_date_range ? ` from ${availability.start_date} to ${availability.end_date}` : ''}`,
+                        variant: "default"
+                    });
+                } else {
+                    toast({
+                        title: "Dataset Not Available",
+                        description: `No data found for ${selectedAsset} (${selectedTimeframe}). Please download the data first.`,
+                        variant: "destructive"
+                    });
+                }
+                
                 // If dataset has date range, update form date values if they're outside the range
                 if (availability.has_date_range && availability.start_date && availability.end_date) {
                     const datasetStartDate = new Date(availability.start_date);
@@ -263,22 +300,24 @@ export default function BacktestingPage() {
                     const currentStartDate = form.getValues('startDate');
                     const currentEndDate = form.getValues('endDate');
                     
+                    let dateAdjusted = false;
+                    
                     // Adjust start date if it's before dataset start date
                     if (currentStartDate && currentStartDate < datasetStartDate) {
                         form.setValue('startDate', datasetStartDate);
-                        toast({
-                            title: "Date Adjusted",
-                            description: `Start date adjusted to match available data (${format(datasetStartDate, "PPP")})`,
-                            variant: "default"
-                        });
+                        dateAdjusted = true;
                     }
                     
                     // Adjust end date if it's after dataset end date
                     if (currentEndDate && currentEndDate > datasetEndDate) {
                         form.setValue('endDate', datasetEndDate);
+                        dateAdjusted = true;
+                    }
+                    
+                    if (dateAdjusted) {
                         toast({
-                            title: "Date Adjusted",
-                            description: `End date adjusted to match available data (${format(datasetEndDate, "PPP")})`,
+                            title: "Date Range Adjusted",
+                            description: `Date range adjusted to match available data (${format(datasetStartDate, "PPP")} to ${format(datasetEndDate, "PPP")})`,
                             variant: "default"
                         });
                     }
@@ -703,7 +742,7 @@ export default function BacktestingPage() {
                          ) : backtestState === BacktestState.RUNNING ? (
                              <>
                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                 Running Job {jobId?.substring(0, 8)}...
+                                 Running Job {jobId?.substring(0, 8)}... {progress > 0 ? `${progress}%` : ''}
                              </>
                          ) : backtestState === BacktestState.FETCHING ? (
                              <>
@@ -727,6 +766,75 @@ export default function BacktestingPage() {
                          </Button>
                      )}
                  </div>
+                 {/* Display progress bar when running */}
+                 {backtestState === BacktestState.RUNNING && (
+                    <div className="mt-2">
+                        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-primary transition-all duration-300 ease-in-out"
+                                style={{ width: `${progress}%` }}
+                            ></div>
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>Processing: {currentDate || 'Starting...'}</span>
+                            <span>{progress}% complete</span>
+                        </div>
+                    </div>
+                 )}
+                 
+                 {/* Data availability notification */}
+                 {selectedAsset && selectedTimeframe && (
+                     <div className={`mt-4 p-4 rounded-md border ${isTickDataAvailable ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800'}`}>
+                         <div className="flex items-start">
+                             <div className={`mr-3 ${isTickDataAvailable ? 'text-green-500 dark:text-green-400' : 'text-amber-500 dark:text-amber-400'}`}>
+                                 {isTickDataAvailable ? (
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                         <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                     </svg>
+                                 ) : (
+                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                                         <circle cx="12" cy="12" r="10"></circle>
+                                         <line x1="12" y1="8" x2="12" y2="12"></line>
+                                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                     </svg>
+                                 )}
+                             </div>
+                             <div className="flex-1">
+                                 <h3 className={`text-sm font-medium ${isTickDataAvailable ? 'text-green-800 dark:text-green-200' : 'text-amber-800 dark:text-amber-200'}`}>
+                                     {isTickDataAvailable ? 'Data Available' : 'Data Not Available'}
+                                 </h3>
+                                 <div className={`mt-1 text-sm ${isTickDataAvailable ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                                     {isTickDataAvailable ? (
+                                         <>
+                                             <p>
+                                                 {datasetInfo.data_points} data points available for {selectedAsset} ({selectedTimeframe})
+                                                 {datasetInfo.has_date_range && datasetInfo.start_date && datasetInfo.end_date && (
+                                                     <> from {datasetInfo.start_date} to {datasetInfo.end_date}</>
+                                                 )}
+                                             </p>
+                                             {form.getValues('startDate') && form.getValues('endDate') && datasetInfo.has_date_range && (
+                                                 <p className="mt-1">
+                                                     <strong>Selected range:</strong> {format(form.getValues('startDate'), "yyyy-MM-dd")} to {format(form.getValues('endDate'), "yyyy-MM-dd")}
+                                                 </p>
+                                             )}
+                                         </>
+                                     ) : (
+                                         <>
+                                             <p>No data available for {selectedAsset} ({selectedTimeframe})</p>
+                                             {form.getValues('startDate') && form.getValues('endDate') && (
+                                                 <p className="mt-1">
+                                                     <strong>Required range:</strong> {format(form.getValues('startDate'), "yyyy-MM-dd")} to {format(form.getValues('endDate'), "yyyy-MM-dd")}
+                                                 </p>
+                                             )}
+                                         </>
+                                     )}
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+                 )}
+                
                  {/* Display general error if form submission or polling fails */}
                  {backtestState === BacktestState.ERROR && error && !backtestResults && (
                     <div className="text-destructive text-sm mt-2 flex items-center">
@@ -922,24 +1030,6 @@ export default function BacktestingPage() {
                                        </ScrollArea>
                                   </details>
                               )}
-                              
-                              <Button
-                                  onClick={handleSaveResults}
-                                  disabled={isSaving}
-                                  className="w-full"
-                              >
-                                  {isSaving ? (
-                                      <>
-                                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                          Saving Results...
-                                      </>
-                                  ) : (
-                                      <>
-                                          <Download className="mr-2 h-4 w-4" />
-                                          Save Results to History
-                                      </>
-                                  )}
-                              </Button>
                           </CardFooter>
                      </Card>
 
@@ -995,7 +1085,28 @@ export default function BacktestingPage() {
                         equityCurve={chartData} // Pass prepared data
                      />
 
-                 </div>
+                     {/* Save Button at the bottom of results */}
+                     <div className="mt-6">
+                         <Button
+                             onClick={handleSaveResults}
+                             disabled={isSaving}
+                             className="w-full"
+                         >
+                             {isSaving ? (
+                                 <>
+                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                     Saving Results...
+                                 </>
+                             ) : (
+                                 <>
+                                     <Save className="mr-2 h-4 w-4" />
+                                     Save Results
+                                 </>
+                             )}
+                         </Button>
+                     </div>
+
+                  </div>
             );
          }
 

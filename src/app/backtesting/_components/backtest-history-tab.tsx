@@ -54,13 +54,8 @@ export default function BacktestHistoryTab() {
     try {
       // Use the new service function to fetch history
       const data = await fetchBacktestHistoryList();
-      // Add the locked property to each item
-      const dataWithLocked = data.map(item => ({
-        ...item,
-        locked: false // Default to unlocked
-      }));
-      // Set the state with the modified data
-      setBacktestHistory(dataWithLocked);
+      // The locked property is now included in the API response
+      setBacktestHistory(data);
     } catch (error) {
       console.error('Failed to fetch backtest history:', error);
       toast({
@@ -81,11 +76,8 @@ export default function BacktestHistoryTab() {
         throw new Error(`Error fetching backtest detail: ${response.statusText}`);
       }
       const data = await response.json();
-      // Add the locked property to the backtest detail
-      setSelectedBacktest({
-        ...data,
-        locked: false // Default to unlocked
-      });
+      // The locked property is now included in the API response
+      setSelectedBacktest(data);
       setIsDetailOpen(true);
     } catch (error) {
       console.error('Failed to fetch backtest detail:', error);
@@ -435,13 +427,13 @@ export default function BacktestHistoryTab() {
               </TabsContent>
 
               <TabsContent value="logs">
-                <Card className="mt-4">
-                  <CardContent className="pt-6">
-                    <pre className="bg-muted p-4 rounded-md overflow-auto h-[400px] text-sm">
+                <div className="mt-4">
+                  <ScrollArea className="h-[400px] w-full border rounded-md bg-muted/50">
+                    <pre className="p-4 text-sm whitespace-pre-wrap">
                       {selectedBacktest.log_output}
                     </pre>
-                  </CardContent>
-                </Card>
+                  </ScrollArea>
+                </div>
               </TabsContent>
 
               <TabsContent value="analysis">
@@ -475,6 +467,25 @@ export default function BacktestHistoryTab() {
             </Tabs>
 
             <DialogFooter>
+              <div className="flex items-center space-x-2 mr-auto">
+                <Button
+                  variant={selectedBacktest.locked ? "destructive" : "outline"}
+                  onClick={() => toggleLockStatus(selectedBacktest.id, selectedBacktest.locked)}
+                  title={selectedBacktest.locked ? "Unlock Backtest" : "Lock Backtest"}
+                >
+                  {selectedBacktest.locked ? (
+                    <>
+                      <UnlockIcon className="mr-2 h-4 w-4" />
+                      Unlock
+                    </>
+                  ) : (
+                    <>
+                      <LockIcon className="mr-2 h-4 w-4" />
+                      Lock
+                    </>
+                  )}
+                </Button>
+              </div>
               <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
                 Close
               </Button>
