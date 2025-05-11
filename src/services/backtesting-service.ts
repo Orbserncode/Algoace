@@ -267,3 +267,81 @@ export async function downloadMarketData(
     }
 }
 
+/**
+ * Interface for backtest history items returned from the API
+ */
+export interface BacktestHistoryItem {
+  id: number;
+  strategy_id: string;
+  timestamp: string;
+  parameters: any;
+  summary_metrics: any;
+  has_ai_analysis: boolean;
+}
+
+/**
+ * Fetches the list of backtest history items
+ * @param strategyId Optional strategy ID to filter results
+ * @returns A promise that resolves to an array of BacktestHistoryItem objects
+ */
+export async function fetchBacktestHistoryList(strategyId?: string): Promise<BacktestHistoryItem[]> {
+  console.log(`SERVICE: Fetching backtest history list${strategyId ? ` for strategy: ${strategyId}` : ''}`);
+  
+  try {
+    const url = strategyId
+      ? `${API_BASE_URL}/backtest-history?strategy_id=${encodeURIComponent(strategyId)}`
+      : `${API_BASE_URL}/backtest-history`;
+      
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Error fetching backtest history: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`SERVICE: Returning ${data.length} backtest history items`);
+    return data;
+  } catch (error) {
+    console.error(`SERVICE: Error fetching backtest history:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Saves the current backtest results to the history
+ * @param strategyId The ID of the strategy
+ * @param results The backtest results to save
+ * @returns A promise that resolves to the saved backtest history item
+ */
+export async function saveBacktestResults(strategyId: string, results: BacktestResults): Promise<BacktestHistoryItem> {
+  console.log(`SERVICE: Saving backtest results for strategy: ${strategyId}`);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/backtest-history`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        strategy_id: strategyId,
+        parameters: results.parameters || {},
+        summary_metrics: results.summaryMetrics,
+        equity_curve: results.equityCurve,
+        trades: results.trades,
+        log_output: results.logOutput || ''
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error saving backtest results: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`SERVICE: Backtest results saved successfully with ID: ${data.id}`);
+    return data;
+  } catch (error) {
+    console.error(`SERVICE: Error saving backtest results:`, error);
+    throw error;
+  }
+}
+

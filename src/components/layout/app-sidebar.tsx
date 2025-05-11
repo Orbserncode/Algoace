@@ -30,7 +30,6 @@ const menuItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/strategies', label: 'Strategies', icon: FileCode },
   { href: '/backtesting', label: 'Backtesting', icon: History },
-  { href: '/backtesting/history', label: 'Backtest History', icon: History },
   { href: '/monitoring', label: 'Monitoring', icon: LineChart },
   { href: '/datasets', label: 'Datasets', icon: Database },
   { href: '/agents', label: 'Agents', icon: Bot },

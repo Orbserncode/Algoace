@@ -83,6 +83,7 @@ app.include_router(monitoring.router) # Include monitoring router
 app.include_router(datasets.router) # Include datasets router
 app.include_router(recommendations.router) # Include recommendations router
 app.include_router(backtesting.router) # Include backtesting router
+app.include_router(backtest_history.router) # Include backtest history router
 
 # --- Handlers for file-based endpoints ---
 @app.get("/file-strategies")

@@ -227,17 +227,11 @@ async def get_backtest_results(strategy_id: str, session: Session = Depends(get_
     symbol = most_recent_job["parameters"]["symbol"]
     initial_capital = most_recent_job["parameters"]["initialCapital"]
     
-    # Generate trades
-    trades = generate_mock_trades(start_date, end_date, symbol)
-    
-    # Calculate summary metrics from the trades
-    summary_metrics = calculate_summary_metrics(trades, initial_capital, start_date, end_date, symbol, most_recent_job["parameters"]["timeframe"])
-    
-    # Generate equity curve based on the trades and initial capital
-    equity_curve = generate_equity_curve_from_trades(trades, initial_capital, start_date, end_date)
-    
-    # Generate log output
-    log_output = generate_log_output(summary_metrics, trades, initial_capital)
+    # Instead of generating mock data, we should use real backtest results from the database
+    raise HTTPException(
+        status_code=501,
+        detail="Mock data generation has been removed. The system should use real backtest calculations."
+    )
     
     # Create a result object
     result = {
@@ -264,337 +258,25 @@ async def get_backtest_results(strategy_id: str, session: Session = Depends(get_
     
     return result
 
-# Helper functions for simulation
+# Helper functions for real backtest execution
 async def simulate_backtest_execution(job_id: str):
     """
-    Simulate the execution of a backtest job.
+    Execute a backtest job.
+    This function should be replaced with real backtest execution logic.
     """
     import asyncio
-    import random
     
     # Get the job details
     job = backtest_jobs[job_id]
-    timeframe = job["parameters"]["timeframe"]
-    
-    # Simulate processing time - longer for smaller timeframes
-    processing_time = 5
-    if timeframe == "1m":
-        processing_time = 15
-    elif timeframe == "5m":
-        processing_time = 12
-    elif timeframe == "15m":
-        processing_time = 10
-    elif timeframe == "1h":
-        processing_time = 8
-    
-    # Initial delay
-    await asyncio.sleep(processing_time / 2 + random.random() * 3)
     
     # Update job status to RUNNING
     backtest_jobs[job_id]["status"] = "RUNNING"
     backtest_jobs[job_id]["updated_at"] = datetime.now().isoformat()
     
-    # Simulate more processing time
-    await asyncio.sleep(processing_time + random.random() * 5)
+    # Simulate a short delay
+    await asyncio.sleep(2)
     
-    # Success probability based on timeframe (smaller timeframes more likely to fail)
-    success_probability = 0.95
-    if timeframe == "1m":
-        success_probability = 0.7
-    elif timeframe == "5m":
-        success_probability = 0.8
-    elif timeframe == "15m":
-        success_probability = 0.85
-    elif timeframe == "1h":
-        success_probability = 0.9
-    
-    if random.random() < success_probability:
-        backtest_jobs[job_id]["status"] = "COMPLETED"
-        backtest_jobs[job_id]["message"] = "Backtest completed successfully"
-    else:
-        backtest_jobs[job_id]["status"] = "FAILED"
-        backtest_jobs[job_id]["message"] = f"Backtest failed: Error processing {timeframe} data"
-    
+    # Update job status to FAILED with a message about mock data removal
+    backtest_jobs[job_id]["status"] = "FAILED"
+    backtest_jobs[job_id]["message"] = "Mock data generation has been removed. The system should use real backtest calculations."
     backtest_jobs[job_id]["updated_at"] = datetime.now().isoformat()
-
-def calculate_summary_metrics(trades, initial_capital, start_date, end_date, symbol, timeframe):
-    """
-    Calculate summary metrics from the trades.
-    """
-    # Calculate total profit/loss
-    total_profit = sum(trade["pnl"] for trade in trades if trade["pnl"] > 0)
-    total_loss = sum(trade["pnl"] for trade in trades if trade["pnl"] <= 0)
-    net_profit = sum(trade["pnl"] for trade in trades)
-    
-    # Calculate win rate
-    winning_trades = [trade for trade in trades if trade["pnl"] > 0]
-    win_rate = len(winning_trades) / len(trades) if trades else 0
-    
-    # Calculate profit factor
-    profit_factor = total_profit / abs(total_loss) if total_loss != 0 else float('inf')
-    
-    # Calculate average trade PnL
-    avg_trade_pnl = net_profit / len(trades) if trades else 0
-    
-    # Calculate max drawdown
-    equity_curve = generate_equity_curve_from_trades(trades, initial_capital, start_date, end_date)
-    max_drawdown = calculate_max_drawdown(equity_curve)
-    
-    # Calculate Sharpe and Sortino ratios
-    daily_returns = calculate_daily_returns(equity_curve)
-    sharpe_ratio = calculate_sharpe_ratio(daily_returns)
-    sortino_ratio = calculate_sortino_ratio(daily_returns)
-    
-    return {
-        "netProfit": round(net_profit, 2),
-        "profitFactor": round(profit_factor, 2),
-        "maxDrawdown": round(max_drawdown, 2),
-        "winRate": round(win_rate, 2),
-        "totalTrades": len(trades),
-        "avgTradePnl": round(avg_trade_pnl, 2),
-        "startDate": start_date,
-        "endDate": end_date,
-        "sharpeRatio": round(sharpe_ratio, 2),
-        "sortinoRatio": round(sortino_ratio, 2),
-        "symbol": symbol,
-        "timeframe": timeframe
-    }
-
-def calculate_daily_returns(equity_curve):
-    """
-    Calculate daily returns from the equity curve.
-    """
-    if not equity_curve or len(equity_curve) < 2:
-        return []
-    
-    daily_returns = []
-    for i in range(1, len(equity_curve)):
-        prev_value = equity_curve[i-1]["portfolioValue"]
-        curr_value = equity_curve[i]["portfolioValue"]
-        daily_return = (curr_value - prev_value) / prev_value
-        daily_returns.append(daily_return)
-    
-    return daily_returns
-
-def calculate_sharpe_ratio(daily_returns, risk_free_rate=0.0):
-    """
-    Calculate the Sharpe ratio from daily returns.
-    """
-    import numpy as np
-    
-    if not daily_returns:
-        return 0
-    
-    # Convert to numpy array for calculations
-    returns = np.array(daily_returns)
-    
-    # Calculate mean and standard deviation
-    mean_return = np.mean(returns)
-    std_return = np.std(returns)
-    
-    # Calculate Sharpe ratio (annualized)
-    if std_return == 0:
-        return 0
-    
-    sharpe = (mean_return - risk_free_rate) / std_return * np.sqrt(252)  # Annualize
-    return sharpe
-
-def calculate_sortino_ratio(daily_returns, risk_free_rate=0.0):
-    """
-    Calculate the Sortino ratio from daily returns.
-    """
-    import numpy as np
-    
-    if not daily_returns:
-        return 0
-    
-    # Convert to numpy array for calculations
-    returns = np.array(daily_returns)
-    
-    # Calculate mean return
-    mean_return = np.mean(returns)
-    
-    # Calculate downside deviation (only negative returns)
-    negative_returns = returns[returns < 0]
-    downside_deviation = np.std(negative_returns) if len(negative_returns) > 0 else 0
-    
-    # Calculate Sortino ratio (annualized)
-    if downside_deviation == 0:
-        return 0
-    
-    sortino = (mean_return - risk_free_rate) / downside_deviation * np.sqrt(252)  # Annualize
-    return sortino
-
-def calculate_max_drawdown(equity_curve):
-    """
-    Calculate the maximum drawdown from the equity curve.
-    """
-    if not equity_curve:
-        return 0
-    
-    # Extract portfolio values
-    portfolio_values = [point["portfolioValue"] for point in equity_curve]
-    
-    # Calculate running maximum
-    running_max = portfolio_values[0]
-    max_drawdown = 0
-    
-    for value in portfolio_values:
-        if value > running_max:
-            running_max = value
-        
-        drawdown = (running_max - value) / running_max
-        max_drawdown = max(max_drawdown, drawdown)
-    
-    return max_drawdown
-
-def generate_equity_curve_from_trades(trades, initial_capital, start_date, end_date):
-    """
-    Generate an equity curve from the trades and initial capital.
-    """
-    from datetime import datetime, timedelta
-    
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    
-    # Calculate number of days
-    days = (end - start).days + 1
-    
-    # Create a dictionary of daily PnL
-    daily_pnl = {}
-    for trade in trades:
-        exit_date = datetime.strptime(trade["exitTimestamp"].split()[0], "%Y-%m-%d")
-        exit_date_str = exit_date.strftime("%Y-%m-%d")
-        
-        if exit_date_str in daily_pnl:
-            daily_pnl[exit_date_str] += trade["pnl"]
-        else:
-            daily_pnl[exit_date_str] = trade["pnl"]
-    
-    # Generate daily equity values
-    equity_curve = []
-    current_capital = initial_capital
-    
-    for i in range(days):
-        current_date = start + timedelta(days=i)
-        current_date_str = current_date.strftime("%Y-%m-%d")
-        
-        # Skip weekends
-        if current_date.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-            continue
-        
-        # Add daily PnL if there are trades closed on this day
-        if current_date_str in daily_pnl:
-            current_capital += daily_pnl[current_date_str]
-        
-        equity_curve.append({
-            "date": current_date_str,
-            "portfolioValue": round(current_capital, 2)
-        })
-    
-    return equity_curve
-
-def generate_log_output(summary_metrics, trades, initial_capital):
-    """
-    Generate log output for the backtest.
-    """
-    log_lines = [
-        "Backtest completed successfully.",
-        f"Initial capital: ${initial_capital:.2f}",
-        f"Final capital: ${initial_capital + summary_metrics['netProfit']:.2f}",
-        f"Net profit: ${summary_metrics['netProfit']:.2f} ({summary_metrics['netProfit']/initial_capital*100:.2f}%)",
-        f"Total trades: {summary_metrics['totalTrades']}",
-        f"Win rate: {summary_metrics['winRate']*100:.2f}%",
-        f"Profit factor: {summary_metrics['profitFactor']:.2f}",
-        f"Max drawdown: {summary_metrics['maxDrawdown']*100:.2f}%",
-        f"Sharpe ratio: {summary_metrics['sharpeRatio']:.2f}",
-        f"Sortino ratio: {summary_metrics['sortinoRatio']:.2f}",
-        f"Average trade P&L: ${summary_metrics['avgTradePnl']:.2f}",
-        "",
-        "Trade summary:",
-        f"  Long trades: {sum(1 for trade in trades if trade['direction'] == 'Long')}",
-        f"  Short trades: {sum(1 for trade in trades if trade['direction'] == 'Short')}",
-        f"  Winning trades: {sum(1 for trade in trades if trade['pnl'] > 0)}",
-        f"  Losing trades: {sum(1 for trade in trades if trade['pnl'] <= 0)}",
-        f"  Total profit: ${sum(trade['pnl'] for trade in trades if trade['pnl'] > 0):.2f}",
-        f"  Total loss: ${sum(trade['pnl'] for trade in trades if trade['pnl'] <= 0):.2f}"
-    ]
-    
-    return "\n".join(log_lines)
-
-def generate_mock_trades(start_date: str, end_date: str, symbol: str):
-    """
-    Generate mock trades for the backtest results.
-    """
-    from datetime import datetime, timedelta
-    import random
-    
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    
-    # Calculate number of days
-    days = (end - start).days + 1
-    
-    # Generate random number of trades (between 20 and 50)
-    num_trades = random.randint(20, 50)
-    
-    trades = []
-    
-    for _ in range(num_trades):
-        # Random entry date within the range
-        entry_days = random.randint(0, days - 2)
-        entry_date = start + timedelta(days=entry_days)
-        
-        # Skip weekends for entry
-        while entry_date.weekday() >= 5:
-            entry_days = random.randint(0, days - 2)
-            entry_date = start + timedelta(days=entry_days)
-        
-        # Random exit date after entry
-        exit_days = random.randint(entry_days + 1, days - 1)
-        exit_date = start + timedelta(days=exit_days)
-        
-        # Skip weekends for exit
-        while exit_date.weekday() >= 5:
-            exit_days = random.randint(entry_days + 1, days - 1)
-            exit_date = start + timedelta(days=exit_days)
-        
-        # Random direction (70% long, 30% short)
-        direction = "Long" if random.random() < 0.7 else "Short"
-        
-        # Random entry and exit prices
-        base_price = random.uniform(50, 200)
-        entry_price = round(base_price, 2)
-        
-        # Exit price based on direction (65% win rate)
-        if (direction == "Long" and random.random() < 0.65) or (direction == "Short" and random.random() >= 0.65):
-            # Winning trade
-            exit_price = round(entry_price * (1 + random.uniform(0.01, 0.05) * (1 if direction == "Long" else -1)), 2)
-        else:
-            # Losing trade
-            exit_price = round(entry_price * (1 - random.uniform(0.01, 0.03) * (1 if direction == "Long" else -1)), 2)
-        
-        # Random quantity
-        quantity = random.randint(10, 100)
-        
-        # Calculate PnL
-        if direction == "Long":
-            pnl = (exit_price - entry_price) * quantity
-        else:
-            pnl = (entry_price - exit_price) * quantity
-        
-        trades.append({
-            "entryTimestamp": entry_date.strftime("%Y-%m-%d %H:%M:%S"),
-            "exitTimestamp": exit_date.strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": symbol,
-            "direction": direction,
-            "entryPrice": entry_price,
-            "exitPrice": exit_price,
-            "quantity": quantity,
-            "pnl": round(pnl, 2)
-        })
-    
-    # Sort trades by entry timestamp
-    trades.sort(key=lambda t: t["entryTimestamp"])
-    
-    return trades

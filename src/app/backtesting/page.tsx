@@ -1,10 +1,11 @@
 // src/app/backtesting/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,11 +21,19 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getStrategies, Strategy } from '@/services/strategies-service';
 import { getAvailableAssets } from '@/services/broker-service'; // Mock service for assets
-import { runBacktest, getBacktestResults, BacktestResults, getBacktestJobStatus, checkDatasetAvailability } from '@/services/backtesting-service';
+import {
+    runBacktest,
+    getBacktestResults,
+    BacktestResults,
+    getBacktestJobStatus,
+    checkDatasetAvailability,
+    saveBacktestResults
+} from '@/services/backtesting-service';
 import { summarizeBacktestResults } from '@/ai/flows/summarize-backtest-results';
 import { PerformanceChart } from '@/app/monitoring/_components/performance-chart'; // Reuse chart
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdvancedVisualizations } from './_components/advanced-visualizations'; // Import advanced charts
+import BacktestHistoryTab from './_components/backtest-history-tab'; // Import backtest history tab
 
 // Validation Schema
 const backtestFormSchema = z.object({
@@ -72,28 +81,22 @@ const formatValue = (value: number | undefined, type: 'currency' | 'percentage' 
     }
 };
 
-// Prepare data for candlestick (needs OHLC structure)
-// This is a placeholder - actual OHLC data needs to come from the backtesting service
-const transformEquityToCandlestick = (equityCurve: BacktestResults['equityCurve']) => {
-    // Mock OHLC data based on portfolioValue - replace with real data
-    return equityCurve.map((point, index, arr) => {
-        const prevClose = index > 0 ? arr[index - 1].portfolioValue : point.portfolioValue;
-        const open = prevClose; // Simple mock: open is previous close
-        const close = point.portfolioValue;
-        const high = Math.max(open, close) * (1 + Math.random() * 0.01); // Add small random variance
-        const low = Math.min(open, close) * (1 - Math.random() * 0.01); // Add small random variance
-        return {
-            date: point.date,
-            open: parseFloat(open.toFixed(2)),
-            high: parseFloat(high.toFixed(2)),
-            low: parseFloat(low.toFixed(2)),
-            close: parseFloat(close.toFixed(2)),
-        };
-    });
+// Prepare data for visualizations
+const prepareChartData = (equityCurve: BacktestResults['equityCurve']) => {
+    // Convert equity curve data to the format expected by AdvancedVisualizations
+    return equityCurve.map(point => ({
+        date: point.date,
+        open: point.portfolioValue,
+        high: point.portfolioValue,
+        low: point.portfolioValue,
+        close: point.portfolioValue
+    }));
 }
 
 
 export default function BacktestingPage() {
+    // State for active tab
+    const [activeTab, setActiveTab] = useState<string>("run");
     const { toast } = useToast();
     const [strategies, setStrategies] = useState<Strategy[]>([]);
     const [assets, setAssets] = useState<string[]>([]);
@@ -107,6 +110,7 @@ export default function BacktestingPage() {
     const [isTickDataAvailable, setIsTickDataAvailable] = useState(true); // Track if tick data is available
     const [showDownloadDialog, setShowDownloadDialog] = useState(false); // Control download dialog visibility
     const [isDownloading, setIsDownloading] = useState(false); // Track download state
+    const [isSaving, setIsSaving] = useState(false); // Track saving state
 
     const form = useForm<BacktestFormData>({
         resolver: zodResolver(backtestFormSchema),
@@ -210,7 +214,7 @@ export default function BacktestingPage() {
              setBacktestState(BacktestState.COMPLETE); // Set state to complete after fetching
              // Adjust toast message based on expected outcome
               if (!expectFailure) {
-                  toast({ title: "Backtest Complete", description: "Results loaded successfully."});
+                  toast({ title: "Backtest Complete", description: "Results loaded successfully. You can save these results to history."});
               } else {
                   toast({ title: "Backtest Failed", description: "Loaded results/logs from failed backtest.", variant: "destructive" });
               }
@@ -451,6 +455,41 @@ export default function BacktestingPage() {
             setBacktestState(BacktestState.COMPLETE); // Still show results, but with error message in summary section
             toast({ title: "AI Summary Error", description: summaryError, variant: "destructive" });
         }
+   };
+   
+   // Function to save backtest results to history
+   const handleSaveResults = async () => {
+       if (!backtestResults) {
+           toast({
+               title: "No Results to Save",
+               description: "Please run a backtest first.",
+               variant: "destructive"
+           });
+           return;
+       }
+       
+       setIsSaving(true);
+       
+       try {
+           await saveBacktestResults(backtestResults.strategyId, backtestResults);
+           
+           toast({
+               title: "Results Saved",
+               description: "Backtest results have been saved to history."
+           });
+           
+           // Switch to history tab after saving
+           setActiveTab("history");
+       } catch (err) {
+           console.error("Failed to save backtest results:", err);
+           toast({
+               title: "Save Failed",
+               description: `Could not save results: ${err instanceof Error ? err.message : 'Unknown error'}`,
+               variant: "destructive"
+           });
+       } finally {
+           setIsSaving(false);
+       }
    };
 
     const isLoading = backtestState === BacktestState.QUEUING || backtestState === BacktestState.RUNNING || backtestState === BacktestState.FETCHING || isInitialDataLoading;
@@ -812,8 +851,8 @@ export default function BacktestingPage() {
         // Show results if state is COMPLETE (or ERROR *after* results loaded) and results exist
          if ((backtestState === BacktestState.COMPLETE || backtestState === BacktestState.ERROR) && backtestResults) {
             const metrics = backtestResults.summaryMetrics;
-            // Transform equity data for candlestick (placeholder transformation)
-            const candlestickData = transformEquityToCandlestick(backtestResults.equityCurve);
+            // Prepare chart data
+            const chartData = prepareChartData(backtestResults.equityCurve);
 
             return (
                  <div className="space-y-6 mt-6 animate-fade-in">
@@ -872,18 +911,36 @@ export default function BacktestingPage() {
                              {metrics.sharpeRatio && <div><dt className="text-muted-foreground">Sharpe Ratio</dt><dd>{metrics.sharpeRatio.toFixed(2)}</dd></div>}
                          </CardContent>
                          {/* Display log output if available (e.g., on failure) */}
-                          {backtestResults.logOutput && (
-                            <CardFooter>
-                                <details className="w-full">
-                                     <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">View Backtest Log</summary>
-                                     <ScrollArea className="mt-2 h-32 w-full rounded-md border bg-muted/50 p-2">
-                                         <pre className="text-xs whitespace-pre-wrap break-words">
-                                             <code>{backtestResults.logOutput}</code>
-                                         </pre>
-                                     </ScrollArea>
-                                </details>
-                            </CardFooter>
-                         )}
+                          <CardFooter className="flex flex-col space-y-4">
+                              {backtestResults.logOutput && (
+                                  <details className="w-full">
+                                       <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">View Backtest Log</summary>
+                                       <ScrollArea className="mt-2 h-32 w-full rounded-md border bg-muted/50 p-2">
+                                           <pre className="text-xs whitespace-pre-wrap break-words">
+                                               <code>{backtestResults.logOutput}</code>
+                                           </pre>
+                                       </ScrollArea>
+                                  </details>
+                              )}
+                              
+                              <Button
+                                  onClick={handleSaveResults}
+                                  disabled={isSaving}
+                                  className="w-full"
+                              >
+                                  {isSaving ? (
+                                      <>
+                                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                          Saving Results...
+                                      </>
+                                  ) : (
+                                      <>
+                                          <Download className="mr-2 h-4 w-4" />
+                                          Save Results to History
+                                      </>
+                                  )}
+                              </Button>
+                          </CardFooter>
                      </Card>
 
                      {/* AI Summary Section */}
@@ -935,7 +992,7 @@ export default function BacktestingPage() {
                     <AdvancedVisualizations
                         trades={backtestResults.trades || []}
                         isLoading={isState(backtestState, BacktestState.FETCHING)}
-                        equityCurve={candlestickData} // Pass transformed data
+                        equityCurve={chartData} // Pass prepared data
                      />
 
                  </div>
@@ -955,7 +1012,13 @@ export default function BacktestingPage() {
 
 
     return (
-        <div className="space-y-6">
+        <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="run">Run Backtest</TabsTrigger>
+                <TabsTrigger value="history">Backtest History</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="run" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Run Backtest</CardTitle>
@@ -1015,7 +1078,12 @@ export default function BacktestingPage() {
              .scroll-area-with-scrollbar {
                 /* Add specific styles if needed, e.g., max-height */
               }
-            `}</style>
-        </div>
+             `}</style>
+            </TabsContent>
+            
+            <TabsContent value="history">
+                <BacktestHistoryTab />
+            </TabsContent>
+        </Tabs>
     );
 }
