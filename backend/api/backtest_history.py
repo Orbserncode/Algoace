@@ -22,6 +22,16 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
+# Import the create_backtest_result function
+from backend.crud_backtest import (
+    get_backtest_result,
+    get_backtest_results_by_strategy,
+    delete_backtest_result,
+    delete_old_backtest_results,
+    update_backtest_result_analysis,
+    create_backtest_result
+)
+
 @router.get("/", response_model=List[dict])
 async def list_backtest_results(
     strategy_id: Optional[str] = None,
@@ -35,8 +45,9 @@ async def list_backtest_results(
         results = get_backtest_results_by_strategy(session, strategy_id, limit)
     else:
         # Get all results, limited by the limit parameter
-        statement = "SELECT * FROM backtestresult ORDER BY timestamp DESC LIMIT :limit"
-        results = session.exec(statement, {"limit": limit}).all()
+        from sqlmodel import select
+        statement = select(BacktestResult).order_by(BacktestResult.timestamp.desc()).limit(limit)
+        results = session.exec(statement).all()
     
     # Convert SQLModel objects to dictionaries
     return [
@@ -165,3 +176,47 @@ async def generate_pdf_report(
         "message": "PDF report generation is not implemented yet",
         "backtest_id": backtest_id
     }
+
+@router.post("/", response_model=dict)
+async def save_backtest_result(
+    backtest_data: dict,
+    session: Session = Depends(get_session)
+):
+    """
+    Save a backtest result to the database.
+    """
+    try:
+        # Extract data from the request
+        strategy_id = backtest_data.get("strategy_id")
+        parameters = backtest_data.get("parameters", {})
+        summary_metrics = backtest_data.get("summary_metrics", {})
+        equity_curve = backtest_data.get("equity_curve", [])
+        trades = backtest_data.get("trades", [])
+        log_output = backtest_data.get("log_output", "")
+        
+        # Validate required fields
+        if not strategy_id:
+            raise HTTPException(status_code=400, detail="strategy_id is required")
+        
+        # Create the backtest result
+        result = create_backtest_result(
+            session=session,
+            strategy_id=strategy_id,
+            parameters=parameters,
+            summary_metrics=summary_metrics,
+            equity_curve=equity_curve,
+            trades=trades,
+            log_output=log_output
+        )
+        
+        # Return the created backtest result
+        return {
+            "id": result.id,
+            "strategy_id": result.strategy_id,
+            "timestamp": result.timestamp.isoformat(),
+            "parameters": result.parameters,
+            "summary_metrics": result.summary_metrics,
+            "has_ai_analysis": result.ai_analysis is not None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save backtest result: {str(e)}")
