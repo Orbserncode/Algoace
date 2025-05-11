@@ -96,6 +96,14 @@ const nextConfig: NextConfig = {
         source: '/api/backtesting/:path*',
         destination: 'http://localhost:8000/api/backtesting/:path*',
       },
+      {
+        source: '/api/backtest-history',
+        destination: 'http://localhost:8000/api/backtest-history/',
+      },
+      {
+        source: '/api/backtest-history/:path*',
+        destination: 'http://localhost:8000/api/backtest-history/:path*',
+      },
     ];
   },
   // Add environment variables for the frontend
