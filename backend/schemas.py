@@ -45,6 +45,7 @@ class AgentTypeEnumSchema(str, Enum):
     PORTFOLIO = 'Portfolio Analyst Agent'
     RISK = 'Risk Manager Agent'
     EXECUTION = 'Execution Agent'
+    BACKTEST_ANALYZER = 'Backtest Analyzer Agent' # Add this
     # Add a BASE type for the BaseAgentConfig if it can exist on its own
     BASE = 'Base Agent' 
 
@@ -135,8 +136,16 @@ class ExecutionAgentConfig(BaseAgentConfig):
     )
     requiresAllAgentConfirmation: bool = Field(default=True, description="Requires explicit confirmation from relevant analysis/risk agents before executing a trade.")
 
+class BacktestAnalyzerAgentConfig(BaseAgentConfig):
+    agent_type: Literal[AgentTypeEnumSchema.BACKTEST_ANALYZER] = Field(AgentTypeEnumSchema.BACKTEST_ANALYZER, frozen=True)
+    analysisPrompt: Optional[str] = Field(
+        default="Analyze the provided backtest results: {summary_metrics}. Provide insights on performance, risk, and potential areas for improvement.",
+        description="System prompt for the backtest analysis LLM. Use placeholder {summary_metrics}."
+    )
+    # Add any other specific configs for this agent if needed in the future
+
 # Union for config types. BaseAgentConfig is included for default/unknown cases.
-AgentConfigUnion = Union[StrategyCodingAgentConfig, ResearchAgentConfig, PortfolioAgentConfig, RiskAgentConfig, ExecutionAgentConfig, BaseAgentConfig]
+AgentConfigUnion = Union[StrategyCodingAgentConfig, ResearchAgentConfig, PortfolioAgentConfig, RiskAgentConfig, ExecutionAgentConfig, BacktestAnalyzerAgentConfig, BaseAgentConfig]
 
 
 # --- Agent CRUD Schemas ---
@@ -208,6 +217,8 @@ def parse_agent_config(agent_type_str: str, config_data: Optional[Dict[str, Any]
         return RiskAgentConfig(**{'agent_type': AgentTypeEnumSchema.RISK.value, **config_data})
     elif agent_type_str == AgentTypeEnumSchema.EXECUTION.value:
         return ExecutionAgentConfig(**{'agent_type': AgentTypeEnumSchema.EXECUTION.value, **config_data})
+    elif agent_type_str == AgentTypeEnumSchema.BACKTEST_ANALYZER.value: # Add this block
+        return BacktestAnalyzerAgentConfig(**{'agent_type': AgentTypeEnumSchema.BACKTEST_ANALYZER.value, **config_data})
     else:
         # Fallback to BaseAgentConfig for unknown or generic types
         # Or raise an error if the type is strictly one of the above.

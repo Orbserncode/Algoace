@@ -5,7 +5,7 @@ This serves as the foundation for all specialized agents in the system.
 from pydantic import BaseModel, Field
 from typing import Generic, TypeVar, Type, Dict, Any, Optional, List, ClassVar
 from sqlmodel import Session
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent as PydanticAICoreAgent, RunContext
 from dataclasses import dataclass
 from httpx import AsyncClient
 
@@ -14,7 +14,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend.models.agent import Agent, AgentTypeEnum
 from backend.schemas import AgentConfigUnion, parse_agent_config, ToolNameEnum
-from backend.ai_agents.tools import AVAILABLE_TOOLS_MAP
+from backend.ai_agents.tools import AVAILABLE_TOOLS_MAP, get_enabled_tools_for_instructor
 
 InputSchema = TypeVar('InputSchema', bound='AgentTaskInput')
 OutputSchema = TypeVar('OutputSchema', bound='AgentTaskOutput')
@@ -49,7 +49,7 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
     input_schema: ClassVar[Type[InputSchema]]
     output_schema: ClassVar[Type[OutputSchema]]
     
-    pydantic_agent: Agent
+    pydantic_agent: PydanticAICoreAgent
     dependencies: AgentDependencies
 
     def __init__(self, agent_model: Agent, session: Session):
@@ -96,7 +96,8 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
             
         # Initialize dependencies
         self.dependencies = AgentDependencies(
-            llm_client=self.llm_client,
+            client=self.llm_client, # Pass the llm_client as 'client'
+            database_session=session, # Pass the session
             # Add other dependencies as needed
         )
             
@@ -117,23 +118,32 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
             else:
                 self.log_message(f"Invalid tool entry '{tool_name_val}' in config, skipping.", level="warn")
 
-        pydantic_ai_tools = get_enabled_tools_for_instructor(parsed_enabled_tool_names)
+        self.pydantic_ai_tools = get_enabled_tools_for_instructor(parsed_enabled_tool_names) # Store as instance variable
         
         # Initialize the Pydantic AI agent
-        # This will be implemented by subclasses
         self.pydantic_agent = self._create_pydantic_agent()
         
-        self.log_message(f"PydanticAIAgent initialized for {self.agent_model.name} with {len(pydantic_ai_tools)} tools.")
+        self.log_message(f"PydanticAIAgent initialized for {self.agent_model.name} with {len(self.pydantic_ai_tools)} tools.")
 
-    def _create_pydantic_agent(self) -> Agent:
+    def _create_pydantic_agent(self) -> PydanticAICoreAgent:
         """
         Create the Pydantic AI agent instance.
-        This should be implemented by subclasses to create the specific agent type.
         
         Returns:
             A configured Pydantic AI agent
         """
-        raise NotImplementedError("Subclasses must implement _create_pydantic_agent")
+        llm_model_str = f"{getattr(self.config, 'llmModelProviderId', 'default_provider')}:{getattr(self.config, 'llmModelName', 'default_model')}"
+        
+        system_prompt = getattr(self.config, 'systemPrompt', "You are a helpful AI assistant.")
+
+        return PydanticAICoreAgent(
+            model=llm_model_str,
+            system_prompt=system_prompt,
+            tools=self.pydantic_ai_tools,
+            deps_type=AgentDependencies,
+            client=self.dependencies.client,
+            # debug=True # Optional: for more verbose output
+        )
 
     async def run(self, task_input: InputSchema, session: Session) -> OutputSchema:
         """
@@ -240,6 +250,9 @@ class PydanticAIAgent(Generic[InputSchema, OutputSchema]):
         elif db_agent.type == AgentTypeEnum.EXECUTION:
             from .execution_agent import ExecutionAIAgent
             return ExecutionAIAgent(agent_model=db_agent, session=session)
+        elif db_agent.type == AgentTypeEnum.BACKTEST_ANALYZER: # Add this block
+            from .backtest_analyzer import BacktestAnalyzerAIAgent 
+            return BacktestAnalyzerAIAgent(agent_model=db_agent, session=session)
         # Add other agent types here
         else:
             raise NotImplementedError(f"Agent type {db_agent.type.value} does not have a PydanticAIAgent implementation.")

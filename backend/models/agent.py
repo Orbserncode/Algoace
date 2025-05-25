@@ -15,6 +15,7 @@ class AgentTypeEnum(str, Enum):
     PORTFOLIO = 'Portfolio Analyst Agent'
     RISK = 'Risk Manager Agent'
     EXECUTION = 'Execution Agent'
+    BACKTEST_ANALYZER = 'Backtest Analyzer Agent' # Add this line
 
 # Base Pydantic model for default agent configuration
 class BaseAgentConfigModel(SQLModel):

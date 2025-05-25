@@ -7,9 +7,12 @@ import json # For formatting JSON in prompts if needed
 from .base_agent import PydanticAIAgent, AgentTaskInput, AgentTaskOutput # Import base agent components
 import sys
 import os
+import httpx # Added for making HTTP requests
+from datetime import datetime, timedelta # Added for default date parameters
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import crud
-from backend.models import StrategyCreate, Agent
+from backend.models import StrategyCreate, Agent # models.StrategyCreate will be used later
 from backend.schemas import StrategyCodingAgentConfig, parse_agent_config
  
 class GenerateStrategyInput(AgentTaskInput):
@@ -53,13 +56,19 @@ class StrategyCodingAIAgent(PydanticAIAgent[GenerateStrategyInput, GenerateStrat
 
         self.log_message("StrategyCodingAIAgent (pydantic-ai) initialized.")
 
-    async def run(self, task_input: GenerateStrategyInput, session: Session) -> GenerateStrategyOutput:
+    async def run(self, task_input: GenerateStrategyInput) -> GenerateStrategyOutput: # session parameter removed
         self.log_message(f"Starting strategy generation task with input: {task_input.model_dump_json(indent=2)}")
+
+        if not self.dependencies.database_session:
+            msg = "Database session not available."
+            self.log_message(msg, level="error")
+            # Cannot update agent stats if session is missing
+            return GenerateStrategyOutput(success=False, message=msg, error_details="Database session missing in dependencies.")
 
         if not self.config.llmModelProviderId or not self.config.llmModelName:
             msg = "LLM provider or model name not configured for strategy generation."
             self.log_message(msg, level="error")
-            self._update_agent_stats(success=False, session=session)
+            self._update_agent_stats(success=False, session=self.dependencies.database_session) # Use self.dependencies.database_session
             return GenerateStrategyOutput(success=False, message=msg)
 
         # Prepare messages for pydantic-ai Instructor
@@ -106,7 +115,21 @@ class StrategyCodingAIAgent(PydanticAIAgent[GenerateStrategyInput, GenerateStrat
             
             self.log_message(f"LLM generated code for file: {llm_response.file_name}")
 
-            # --- Post-processing: Save the generated strategy ---
+            # --- Persist the generated code to a file ---
+            STRATEGIES_DIR = "backend/strategies/generated"
+            os.makedirs(STRATEGIES_DIR, exist_ok=True)
+            file_path = os.path.join(STRATEGIES_DIR, llm_response.file_name)
+            
+            try:
+                with open(file_path, "w") as f:
+                    f.write(llm_response.python_code)
+                self.log_message(f"Successfully saved strategy code to {file_path}")
+            except IOError as e:
+                self.log_message(f"Error saving strategy code to {file_path}: {e}", level="error")
+                self._update_agent_stats(success=False, session=self.dependencies.database_session) # Use self.dependencies.database_session
+                return GenerateStrategyOutput(success=False, message=f"Failed to save strategy code to file: {e}", error_details=str(e))
+
+            # --- Post-processing: Save the strategy metadata to DB ---
             # Suggest a strategy name based on generated file name or task input
             suggested_strat_name = llm_response.file_name.replace(".py", "").replace("_", " ").title()
             if not suggested_strat_name or len(suggested_strat_name) < 3:
@@ -123,10 +146,12 @@ class StrategyCodingAIAgent(PydanticAIAgent[GenerateStrategyInput, GenerateStrat
 
             # For this iteration, let's assume backtesting is separate.
             # Save the strategy to the database (without PnL/WinRate from backtest yet)
-            new_strategy_db = crud.create_strategy(session=session, strategy_in=models.StrategyCreate(
-                name=suggested_strat_name,
-                description=strategy_description,
-                status='Inactive', # AI-generated strategies start as inactive for review
+            new_strategy_db = crud.create_strategy(
+                session=self.dependencies.database_session, # Use self.dependencies.database_session
+                strategy_in=StrategyCreate( # Assuming models.StrategyCreate is imported as StrategyCreate or directly accessible
+                    name=suggested_strat_name,
+                    description=strategy_description,
+                    status='Inactive', # AI-generated strategies start as inactive for review
                 source='AI-Generated',
                 file_name=llm_response.file_name, # Store filename
                 # pnl and win_rate will be updated after a separate backtest run
@@ -138,21 +163,83 @@ class StrategyCodingAIAgent(PydanticAIAgent[GenerateStrategyInput, GenerateStrat
             # This could be to a file system, S3, or a dedicated table/field in the DB.
             # For now, we're returning it in the output, but it also needs persistence.
             # Example: save_strategy_code_to_file(new_strategy_db.id, llm_response.file_name, llm_response.python_code)
-            self.log_message(f"Simulating save of code for strategy {new_strategy_db.id} to {llm_response.file_name}")
+            # Actual save already happened above.
+            # self.log_message(f"Simulating save of code for strategy {new_strategy_db.id} to {llm_response.file_name}") # Remove simulation message
+
+            # --- Initiate Automated Backtesting ---
+            base_name_without_ext = llm_response.file_name.split('.')[0] if '.' in llm_response.file_name else llm_response.file_name
+            strategy_id_for_backtest = f"strat-generated.{base_name_without_ext}" # Format: strat-generated.my_strategy
+
+            # Define default backtesting parameters
+            target_asset_class = task_input.target_asset_class.lower() if task_input.target_asset_class else "stocks"
+            if target_asset_class == 'stocks':
+                default_symbol = 'AAPL'
+            elif target_asset_class == 'crypto':
+                default_symbol = 'BTC/USD' # Ensure this matches dataset symbol format
+            elif target_asset_class == 'forex':
+                default_symbol = 'EUR/USD'
+            else:
+                default_symbol = 'SPY'
+            
+            default_timeframe = '1D'
+            end_date_str = datetime.now().strftime("%Y-%m-%d")
+            start_date_str = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+            initial_capital_float = 10000.0
+
+            backtest_payload = {
+                "strategy_id": strategy_id_for_backtest,
+                "parameters": {
+                    "startDate": start_date_str,
+                    "endDate": end_date_str,
+                    "initialCapital": initial_capital_float,
+                    "symbol": default_symbol,
+                    "timeframe": default_timeframe
+                }
+            }
+
+            # TODO: Move BACKTEST_API_URL to configuration
+            BACKTEST_API_URL = "http://localhost:8000/backtesting/run" 
+            
+            original_success_message = f"Strategy '{new_strategy_db.name}' (code for {llm_response.file_name} saved to {file_path}) generated successfully."
+            final_message = original_success_message # Default to original message
+
+            try:
+                if not self.dependencies.client:
+                    raise ValueError("HTTP client (self.dependencies.client) not initialized.")
+
+                api_response = await self.dependencies.client.post(BACKTEST_API_URL, json=backtest_payload)
+                api_response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+                backtest_job_data = api_response.json()
+                job_id = backtest_job_data.get('jobId')
+                self.log_message(f"Successfully initiated backtest for {strategy_id_for_backtest}. Job ID: {job_id}")
+                final_message = f"{original_success_message} Backtest initiated with Job ID: {job_id}."
+            
+            except httpx.HTTPStatusError as e:
+                error_detail = e.response.text if e.response else "No response body"
+                self.log_message(f"HTTP error initiating backtest for {strategy_id_for_backtest}: {e.response.status_code} - {error_detail}", level="error")
+                final_message = f"{original_success_message} However, failed to initiate backtest: HTTP Error {e.response.status_code}."
+            
+            except httpx.RequestError as e:
+                self.log_message(f"Request error initiating backtest for {strategy_id_for_backtest}: {e}", level="error")
+                final_message = f"{original_success_message} However, failed to initiate backtest: Request Error."
+            
+            except ValueError as e: # For self.dependencies.client check
+                 self.log_message(f"Configuration error for backtesting: {e}", level="error")
+                 final_message = f"{original_success_message} However, backtest could not be initiated due to a configuration error: {e}."
 
 
-            self._update_agent_stats(success=True, session=session)
+            self._update_agent_stats(success=True, session=self.dependencies.database_session) # Mark agent task as success even if backtest fails to initiate for now
             return GenerateStrategyOutput(
-                success=True,
-                message=f"Strategy '{new_strategy_db.name}' (code for {llm_response.file_name}) generated successfully. Needs backtesting.",
+                success=True, # Overall success is true if code generation and saving worked
+                message=final_message,
                 generated_code_details=llm_response,
                 strategy_name_suggestion=new_strategy_db.name,
-                data={"strategy_id": new_strategy_db.id}
+                data={"strategy_id": new_strategy_db.id, "backtest_job_id": backtest_job_data.get('jobId') if 'backtest_job_data' in locals() and backtest_job_data else None}
             )
 
         except Exception as e:
             self.log_message(f"Error during pydantic-ai LLM call or post-processing: {e}", level="error")
-            self._update_agent_stats(success=False, session=session)
+            self._update_agent_stats(success=False, session=self.dependencies.database_session) # Use self.dependencies.database_session
             return GenerateStrategyOutput(success=False, message="Failed to generate strategy code via LLM.", error_details=str(e))
 
 # Note: asyncio.sleep is removed as pydantic-ai handles async LLM calls.

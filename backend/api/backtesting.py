@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import uuid
 from datetime import datetime
 
-from backend.database import get_session
+from backend.database import get_session, engine # Added engine import
 from backend import crud
 from backend.models import dataset
 from backend.crud_datasets import search_datasets
@@ -546,6 +546,29 @@ async def simulate_backtest_execution(job_id: str, timeout: int = 300):
             "parameters": parameters,
             "logOutput": log_output
         }
+        
+        # --- Save results to database ---
+        try:
+            # engine should be imported at the top of the file
+            with Session(engine) as db_session_for_saving_results:
+                db_backtest_result = create_backtest_result(
+                    session=db_session_for_saving_results,
+                    strategy_id=result["strategyId"],
+                    parameters=result["parameters"],
+                    summary_metrics=result["summaryMetrics"],
+                    equity_curve=result["equityCurve"],
+                    trades=result["trades"],
+                    log_output=result["logOutput"],
+                    ai_analysis=None  # Initially no AI analysis
+                )
+                job["db_backtest_result_id"] = db_backtest_result.id # Optional: store DB id in job
+                print(f"Backtest results for job {job_id} saved to database with ID: {db_backtest_result.id}")
+
+        except Exception as e:
+            print(f"Error saving backtest results to database for job {job_id}: {e}")
+            # Decide if this should mark the job as failed or just log the error
+            # For now, we'll just log it, as the main backtest execution was successful.
+            # The job status remains "COMPLETED".
         
         # Update job status to COMPLETED and store the results
         backtest_jobs[job_id]["status"] = "COMPLETED"
