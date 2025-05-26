@@ -1,5 +1,5 @@
 from lumibot.strategies.strategy import Strategy
-from lumibot.backtesting import YahooDataBacktesting
+from lumibot.backtesting import YahooDataBacktesting, PandasDataBacktesting
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -8,18 +8,20 @@ class RsiMeanReversionStrategy(Strategy):
     """
     RSI Mean Reversion Strategy.
     
-    This strategy buys when RSI is oversold (below 30) and sells when RSI is overbought (above 70).
+    This strategy buys when RSI is oversold (below oversold_threshold) and sells when RSI is overbought (above overbought_threshold).
     It's a classic mean reversion strategy based on the idea that extreme RSI values tend to revert to the mean.
     """
     
     def initialize(self):
-        self.sleeptime = "1D"
-        self.set_market("us_equities")
+        # Get parameters from the parameters dictionary with defaults
+        self.sleeptime = self.parameters.get("timeframe", "1D")
+        self.market = self.parameters.get("market", "us_equities")
+        self.set_market(self.market)
         
         # Strategy parameters
-        self.rsi_period = 14
-        self.oversold_threshold = 30
-        self.overbought_threshold = 70
+        self.rsi_period = self.parameters.get("rsi_period", 14)
+        self.oversold_threshold = self.parameters.get("oversold_threshold", 30)
+        self.overbought_threshold = self.parameters.get("overbought_threshold", 70)
         self.symbol = self.parameters.get("symbol", "SPY")
     
     def on_trading_iteration(self):
@@ -121,15 +123,66 @@ if __name__ == "__main__":
     end_date = datetime(2023, 1, 1)
     
     # Initialize strategy with parameters
-    strategy_params = {"symbol": "AAPL"}
+    strategy_params = {
+        "symbol": "AAPL",
+        "timeframe": "1D",
+        "market": "us_equities",
+        "rsi_period": 14,
+        "oversold_threshold": 30,
+        "overbought_threshold": 70
+    }
     
-    # Create backtest
-    backtest = YahooDataBacktesting(
-        RsiMeanReversionStrategy,
-        start_date,
-        end_date,
-        parameters=strategy_params
-    )
+    # Choose data source based on environment variable or argument
+    import os
+    data_source = os.environ.get("DATA_SOURCE", "yahoo")
+    
+    if data_source.lower() == "yahoo":
+        # Use Yahoo Finance data
+        backtest = YahooDataBacktesting(
+            RsiMeanReversionStrategy,
+            start_date,
+            end_date,
+            parameters=strategy_params
+        )
+    elif data_source.lower() == "csv":
+        # Use local CSV data
+        import pandas as pd
+        
+        # Load data from CSV file
+        data_path = os.environ.get("DATA_PATH", "data/stocks/aapl_daily.csv")
+        data = pd.read_csv(data_path)
+        
+        # Ensure timestamp column is datetime
+        if 'timestamp' in data.columns:
+            data['timestamp'] = pd.to_datetime(data['timestamp'])
+            data = data.set_index('timestamp')
+        elif 'date' in data.columns:
+            data['timestamp'] = pd.to_datetime(data['date'])
+            data = data.set_index('timestamp')
+        
+        # Create custom data source
+        class CustomDataSource:
+            def __init__(self, data, symbol):
+                self.data = data
+                self.symbol = symbol
+            
+            def get_symbol_data(self, symbol, start_date, end_date, timeframe="1d"):
+                return self.data if symbol == self.symbol else None
+        
+        # Create data source
+        data_source = CustomDataSource(data, strategy_params["symbol"])
+        
+        # Create backtest with PandasDataBacktesting
+        backtest = PandasDataBacktesting(
+            RsiMeanReversionStrategy,
+            start_date,
+            end_date,
+            parameters=strategy_params,
+            data_source=data_source,
+            config={"BYPASS_MARKET_SCHEDULE": True}
+        )
+    else:
+        raise ValueError(f"Unknown data source: {data_source}")
     
     # Run backtest
     results = backtest.run()

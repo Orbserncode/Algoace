@@ -105,11 +105,76 @@ def update_dataset(
     return dataset
 
 def delete_dataset(session: Session, dataset_id: int) -> bool:
-    """Delete a dataset"""
+    """Delete a dataset and its associated file"""
+    import os
+    import logging
+    import glob
+    
+    logger = logging.getLogger(__name__)
+    
     dataset = session.get(Dataset, dataset_id)
     if not dataset:
         return False
     
+    # Try to delete the actual file
+    file_path = dataset.path
+    
+    # Make sure the path is absolute and correct
+    if not file_path.startswith('/workspaces/Algoace') and not os.path.exists(file_path):
+        file_path = os.path.join('/workspaces/Algoace', file_path.lstrip('/'))
+    
+    # Check if the file exists
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            logger.info(f"Deleted file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error deleting file {file_path}: {str(e)}")
+    else:
+        # Try to find the file in the data directory
+        symbol = dataset.name.split()[0]  # Assuming name format like "EUR/USD Historical (1d)"
+        timeframe = dataset.dataset_metadata.get('timeframe', '1d')
+        
+        base_path = "/workspaces/Algoace/data"
+        if symbol.lower() == "eur/usd":
+            category = "forex"
+            symbol = "eurusd"  # Normalize symbol for filename
+        elif symbol.lower() in ["btc/usd", "btcusd"]:
+            category = "crypto"
+            symbol = "btcusd"  # Normalize symbol for filename
+        elif symbol.lower() in ["sp500"]:
+            category = "futures"
+        else:
+            category = "stocks"
+        
+        # Map timeframe to filename
+        timeframe_map = {
+            "1d": "1d",
+            "1h": "1h",
+            "15m": "15m",
+            "5m": "5m",
+            "1m": "1m"
+        }
+        
+        tf = timeframe_map.get(timeframe, timeframe)
+        
+        # Try to find the file
+        potential_paths = [
+            f"{base_path}/{category}/{symbol.lower()}_{tf}_*.csv",
+            f"{base_path}/{category}/{symbol.lower()}_{tf}_*.json"
+        ]
+        
+        for pattern in potential_paths:
+            matches = glob.glob(pattern)
+            if matches:
+                for match in matches:
+                    try:
+                        os.remove(match)
+                        logger.info(f"Deleted file: {match}")
+                    except Exception as e:
+                        logger.error(f"Error deleting file {match}: {str(e)}")
+    
+    # Delete the dataset from the database
     session.delete(dataset)
     session.commit()
     return True

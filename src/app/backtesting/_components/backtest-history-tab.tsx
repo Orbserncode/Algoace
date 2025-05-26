@@ -378,10 +378,10 @@ export default function BacktestHistoryTab() {
                         <dd>{selectedBacktest.parameters?.timeframe || 'N/A'}</dd>
                         
                         <dt className="font-medium">Start Date:</dt>
-                        <dd>{selectedBacktest.parameters?.startDate || 'N/A'}</dd>
+                        <dd>{selectedBacktest.parameters?.startDate ? format(new Date(selectedBacktest.parameters.startDate), 'dd-MM-yyyy') : 'N/A'}</dd>
                         
                         <dt className="font-medium">End Date:</dt>
-                        <dd>{selectedBacktest.parameters?.endDate || 'N/A'}</dd>
+                        <dd>{selectedBacktest.parameters?.endDate ? format(new Date(selectedBacktest.parameters.endDate), 'dd-MM-yyyy') : 'N/A'}</dd>
                         
                         <dt className="font-medium">Initial Capital:</dt>
                         <dd>${selectedBacktest.parameters?.initialCapital?.toFixed(2) || '0.00'}</dd>
@@ -409,8 +409,8 @@ export default function BacktestHistoryTab() {
                     <TableBody>
                       {selectedBacktest.trades.map((trade, index) => (
                         <TableRow key={index}>
-                          <TableCell>{trade.entryTimestamp}</TableCell>
-                          <TableCell>{trade.exitTimestamp}</TableCell>
+                          <TableCell>{trade.entryTimestamp ? format(new Date(trade.entryTimestamp), 'dd-MM-yyyy HH:mm') : 'N/A'}</TableCell>
+                          <TableCell>{trade.exitTimestamp ? format(new Date(trade.exitTimestamp), 'dd-MM-yyyy HH:mm') : 'N/A'}</TableCell>
                           <TableCell>{trade.symbol}</TableCell>
                           <TableCell>{trade.direction}</TableCell>
                           <TableCell>${trade.entryPrice.toFixed(2)}</TableCell>

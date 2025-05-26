@@ -84,6 +84,11 @@ def check_dataset_availability(
     Check if a dataset is available for the given symbol and timeframe.
     Returns availability status, count, and date range information.
     """
+    import os
+    import pandas as pd
+    from datetime import datetime
+    import glob
+    
     # Search for datasets matching the symbol and timeframe
     datasets = crud_datasets.search_datasets(
         session=session,
@@ -100,7 +105,8 @@ def check_dataset_availability(
         "count": len(datasets),
         "start_date": None,
         "end_date": None,
-        "has_date_range": False
+        "has_date_range": False,
+        "data_points": 0
     }
     
     # If datasets are found, extract date range information
@@ -114,7 +120,89 @@ def check_dataset_availability(
                 response["start_date"] = metadata["start_date"]
                 response["end_date"] = metadata["end_date"]
                 response["has_date_range"] = True
+                if "data_points" in metadata:
+                    response["data_points"] = metadata["data_points"]
                 break  # Use the first dataset with date range info
+            
+            # If metadata doesn't have date range, try to extract it from the file
+            dataset_path = dataset.path
+            
+            # Check if the path exists
+            if not os.path.exists(dataset_path):
+                # Try to find the file in the data directory
+                base_path = "/workspaces/Algoace/data"
+                if symbol.lower() == "eurusd":
+                    category = "forex"
+                elif symbol.lower() in ["btcusd"]:
+                    category = "crypto"
+                elif symbol.lower() in ["sp500"]:
+                    category = "futures"
+                else:
+                    category = "stocks"
+                
+                # Map timeframe to filename
+                timeframe_map = {
+                    "1d": "1d",
+                    "1h": "1h",
+                    "15m": "15m",
+                    "5m": "5m",
+                    "1m": "1m"
+                }
+                
+                tf = timeframe_map.get(timeframe, timeframe)
+                
+                # Try to find the file
+                potential_paths = [
+                    f"{base_path}/{category}/{symbol.lower()}_{tf}_*.csv",
+                    f"{base_path}/{category}/{symbol.lower()}_{tf}_*.json"
+                ]
+                
+                for pattern in potential_paths:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        dataset_path = matches[0]
+                        break
+            
+            # If we found a file, try to extract date range
+            if os.path.exists(dataset_path):
+                try:
+                    # Load the data
+                    if dataset_path.endswith('.csv'):
+                        data = pd.read_csv(dataset_path)
+                    elif dataset_path.endswith('.json'):
+                        data = pd.read_json(dataset_path)
+                    else:
+                        continue  # Skip unsupported formats
+                    
+                    # Map columns if needed
+                    if 'date' in data.columns and 'timestamp' not in data.columns:
+                        data['timestamp'] = data['date']
+                    
+                    # Convert timestamp to datetime if it's not already
+                    if 'timestamp' in data.columns:
+                        if not pd.api.types.is_datetime64_any_dtype(data['timestamp']):
+                            data['timestamp'] = pd.to_datetime(data['timestamp'])
+                        
+                        # Extract date range
+                        start_date = data['timestamp'].min()
+                        end_date = data['timestamp'].max()
+                        
+                        response["start_date"] = start_date.strftime("%Y-%m-%d")
+                        response["end_date"] = end_date.strftime("%Y-%m-%d")
+                        response["has_date_range"] = True
+                        response["data_points"] = len(data)
+                        
+                        # Update dataset metadata
+                        metadata["start_date"] = response["start_date"]
+                        metadata["end_date"] = response["end_date"]
+                        metadata["data_points"] = len(data)
+                        dataset.dataset_metadata = metadata
+                        session.add(dataset)
+                        session.commit()
+                        
+                        break  # Use the first dataset with date range info
+                except Exception as e:
+                    print(f"Error extracting date range from {dataset_path}: {str(e)}")
     
     return response
 

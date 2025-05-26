@@ -302,23 +302,15 @@ export default function BacktestingPage() {
                     
                     let dateAdjusted = false;
                     
-                    // Adjust start date if it's before dataset start date
-                    if (currentStartDate && currentStartDate < datasetStartDate) {
-                        form.setValue('startDate', datasetStartDate);
-                        dateAdjusted = true;
-                    }
+                    // Do not automatically adjust dates - just warn the user if they're outside the available range
+                    const dateOutOfRange = (currentStartDate && currentStartDate < datasetStartDate) || 
+                                          (currentEndDate && currentEndDate > datasetEndDate);
                     
-                    // Adjust end date if it's after dataset end date
-                    if (currentEndDate && currentEndDate > datasetEndDate) {
-                        form.setValue('endDate', datasetEndDate);
-                        dateAdjusted = true;
-                    }
-                    
-                    if (dateAdjusted) {
+                    if (dateOutOfRange) {
                         toast({
-                            title: "Date Range Adjusted",
-                            description: `Date range adjusted to match available data (${format(datasetStartDate, "PPP")} to ${format(datasetEndDate, "PPP")})`,
-                            variant: "default"
+                            title: "Date Range Outside Available Data",
+                            description: `Your selected date range is outside the available data (${format(datasetStartDate, "PPP")} to ${format(datasetEndDate, "PPP")}). You can proceed, but you may need to download additional data.`,
+                            variant: "destructive"
                         });
                     }
                 }
@@ -808,7 +800,7 @@ export default function BacktestingPage() {
                                      {isTickDataAvailable ? (
                                          <>
                                              <p>
-                                                 {datasetInfo.data_points} data points available for {selectedAsset} ({selectedTimeframe})
+                                                 {datasetInfo.count.toLocaleString()} data points available for {selectedAsset} ({selectedTimeframe})
                                                  {datasetInfo.has_date_range && datasetInfo.start_date && datasetInfo.end_date && (
                                                      <> from {datasetInfo.start_date} to {datasetInfo.end_date}</>
                                                  )}
